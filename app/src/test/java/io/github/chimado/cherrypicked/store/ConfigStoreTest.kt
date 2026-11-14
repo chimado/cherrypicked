@@ -31,4 +31,20 @@ class ConfigStoreTest {
         assertFalse(File(tmp.root, "config.json.tmp").exists())
         assertTrue(File(tmp.root, "config.json").exists())
     }
+
+    @Test fun newerVersionFallsBackAndIsKept() {
+        File(tmp.root, "config.json").writeText("{\"version\":99}")
+        assertEquals(Config(), ConfigStore(tmp.root).load())
+        assertTrue(File(tmp.root, "config.json.bad").exists())
+    }
+
+    @Test fun emptyFileFallsBack() {
+        File(tmp.root, "config.json").writeText("")
+        assertEquals(Config(), ConfigStore(tmp.root).load())
+    }
+
+    @Test fun unreadablePathFallsBack() {
+        File(tmp.root, "config.json").mkdir()
+        assertEquals(Config(), ConfigStore(tmp.root).load())
+    }
 }

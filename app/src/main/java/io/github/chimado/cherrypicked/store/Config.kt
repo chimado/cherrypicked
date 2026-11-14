@@ -32,6 +32,7 @@ fun Config.toJson(): String = JSONObject().apply {
 fun Config.Companion.fromJson(s: String): Config = try {
     val o = JSONObject(s)
     val d = Config()
+    if (o.has("version") && o.getInt("version") > 1) throw JSONException("newer config version")
     fun strings(k: String): List<String>? = if (!o.has(k)) null else o.getJSONArray(k).let { a ->
         List(a.length()) { i -> a.get(i) as? String ?: throw JSONException("$k[$i] not a string") }
     }

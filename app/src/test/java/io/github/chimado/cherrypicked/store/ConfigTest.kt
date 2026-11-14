@@ -6,7 +6,7 @@ import org.junit.Test
 
 class ConfigTest {
     @Test fun roundTrip() {
-        val c = Config(2, listOf("a", "b"), setOf("h"), "m", true, setOf("fav:x", "main:y"), true)
+        val c = Config(1, listOf("a", "b"), setOf("h"), "m", true, setOf("fav:x", "main:y"), true)
         assertEquals(c, Config.fromJson(c.toJson()))
     }
 
