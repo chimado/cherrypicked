@@ -1,0 +1,8 @@
+.superpowers/
+build/
+.gradle/
+local.properties
+dist/
+tools/results/
+bench/dist/
+*.apk
