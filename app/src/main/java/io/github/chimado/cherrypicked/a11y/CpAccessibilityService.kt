@@ -17,8 +17,11 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import io.github.chimado.cherrypicked.apps.AppCatalog
-import io.github.chimado.cherrypicked.home.HomeActivity
+import io.github.chimado.cherrypicked.keys.Effect
 import io.github.chimado.cherrypicked.keys.KeyNames
+import io.github.chimado.cherrypicked.keys.Remap
+import io.github.chimado.cherrypicked.keys.RemapEngine
+import io.github.chimado.cherrypicked.keys.encode
 import io.github.chimado.cherrypicked.store.ConfigStore
 import java.io.File
 import java.io.IOException
@@ -28,6 +31,15 @@ class CpAccessibilityService : AccessibilityService() {
     private var lastWindowPkg: String? = null
     private var registered = false
     private val tvInputPackages by lazy { tvInputPackages(this) }
+
+    private val store by lazy { ConfigStore(filesDir) } // caches by config.json lastModified, so load() is one stat
+    private var remaps: List<Remap> = emptyList()
+    private val engine = RemapEngine(emptyList())
+    private val runner by lazy { ActionRunner(this) }
+    private val engineTimer = Runnable { handle(engine.onTimer(SystemClock.uptimeMillis())) }
+    private val testHook = TestHook(handler, { runner.run(it) }) { code, down, repeat ->
+        Log.i("CP", "test feed key=$code down=$down repeat=$repeat consume=${feedKey(code, down, repeat, false)}")
+    }
 
     private val wakeCheck = Runnable {
         val fg = lastWindowPkg
@@ -39,7 +51,10 @@ class CpAccessibilityService : AccessibilityService() {
         override fun onReceive(c: Context, i: Intent) {
             Log.i("CP", "${i.action?.substringAfterLast('.')} pid=${Process.myPid()} t=${SystemClock.elapsedRealtime()}")
             handler.removeCallbacks(wakeCheck) // screen off before settling: drop the pending check
-            if (i.action == Intent.ACTION_SCREEN_ON) handler.postDelayed(wakeCheck, AutoOpenPolicy.WAKE_SETTLE_MS)
+            if (i.action == Intent.ACTION_SCREEN_ON) {
+                refreshRemaps()
+                handler.postDelayed(wakeCheck, AutoOpenPolicy.WAKE_SETTLE_MS)
+            }
         }
     }
 
@@ -65,6 +80,10 @@ class CpAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         Log.i("CP", "connected pid=${Process.myPid()}")
         bootCheck()
+        handler.removeCallbacks(engineTimer)
+        engine.reset()
+        remaps = store.load().remaps
+        engine.setRemaps(remaps)
         if (registered) return
         // Protected system broadcasts only; the system still delivers them to a non-exported receiver.
         registerReceiver(screenRx, IntentFilter().apply {
@@ -72,6 +91,8 @@ class CpAccessibilityService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_OFF)
         }, RECEIVER_NOT_EXPORTED)
         registerReceiver(learnRx, IntentFilter(KeyLearn.ACTION_START), RECEIVER_NOT_EXPORTED)
+        // Exported because the sender is the shell uid; DUMP keeps normal apps out.
+        registerReceiver(testHook, IntentFilter(TestHook.ACTION), "android.permission.DUMP", handler, RECEIVER_EXPORTED)
         registered = true
     }
 
@@ -98,11 +119,28 @@ class CpAccessibilityService : AccessibilityService() {
             return true
         }
         if (learning) { Log.i("CP", "learn key=${event.keyCode} ${KeyNames.label(event.keyCode)}"); return true }
-        if (!HomeKeyPolicy.intercept(event.keyCode)) return false
-        if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) {
-            startActivity(Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return feedKey(event.keyCode, event.action == KeyEvent.ACTION_DOWN, event.repeatCount, event.isCanceled)
+    }
+
+    /** The one remap path, shared by real keys and [TestHook]. Uptime clock throughout, matching handler.postAtTime. */
+    private fun feedKey(code: Int, down: Boolean, repeat: Int, canceled: Boolean): Boolean {
+        if (down && repeat == 0 && remaps.none { it.keyCode == code }) refreshRemaps()
+        val d = engine.onKey(code, down, repeat, canceled, SystemClock.uptimeMillis())
+        handle(d.effects)
+        return d.consume
+    }
+
+    private fun handle(fx: List<Effect>) {
+        for (e in fx) when (e) {
+            is Effect.Fire -> { Log.i("CP", "fire ${e.action.encode()}"); runner.run(e.action) }
+            is Effect.Schedule -> handler.postAtTime(engineTimer, e.atMs)
+            Effect.CancelSchedule -> handler.removeCallbacks(engineTimer)
         }
-        return true
+    }
+
+    private fun refreshRemaps() {
+        val r = store.load().remaps // same list instance while config.json is unchanged
+        if (r !== remaps) { remaps = r; engine.setRemaps(r); Log.i("CP", "remaps reloaded n=${r.size}") }
     }
 
     /** Tracks the foreground app: only events whose class is an activity of that package (not dialogs, toasts, banners). */
@@ -132,9 +170,12 @@ class CpAccessibilityService : AccessibilityService() {
     private fun stop() {
         handler.removeCallbacks(wakeCheck)
         handler.removeCallbacks(learnEnd)
+        handler.removeCallbacks(engineTimer)
+        testHook.cancel()
+        engine.reset()
         learning = false
         learnedDown = -1
-        if (registered) { unregisterReceiver(screenRx); unregisterReceiver(learnRx); registered = false }
+        if (registered) { unregisterReceiver(screenRx); unregisterReceiver(learnRx); unregisterReceiver(testHook); registered = false }
     }
 }
 
