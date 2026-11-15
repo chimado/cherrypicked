@@ -44,14 +44,20 @@ fun Config.putRemap(r: Remap): Config {
     val a = r.action
     if ((a is Action.OpenApp && a.pkg.isEmpty()) || (a is Action.OpenInput && a.inputId.isEmpty())) return this
     if (!canRemap(r.keyCode, r.press, remaps)) return this
-    return copy(remaps = remaps.filterNot { it.keyCode == r.keyCode && it.press == r.press } + r)
+    return keepingWayHome(remaps.filterNot { it.keyCode == r.keyCode && it.press == r.press } + r)
 }
 
 /** Removing a key's single also drops its double/long when those can't stand alone (they would swallow single presses). */
 fun Config.removeRemap(keyCode: Int, press: Press): Config {
     val left = remaps.filterNot { it.keyCode == keyCode && it.press == press }
-    return copy(remaps = left.filter { it.keyCode != keyCode || canRemap(it.keyCode, it.press, left) })
+    return keepingWayHome(left.filter { it.keyCode != keyCode || canRemap(it.keyCode, it.press, left) })
 }
+
+/** Some press still opens Cherrypicked or the panel: the implicit Home single, or a Home/QuickPanel remap. */
+fun hasWayHome(remaps: List<Remap>) = remaps.none { it.keyCode == KeyEvent.KEYCODE_HOME && it.press == Press.SINGLE } ||
+    remaps.any { it.action == Action.Home || it.action == Action.QuickPanel }
+
+private fun Config.keepingWayHome(r: List<Remap>) = if (hasWayHome(r)) copy(remaps = r) else this
 
 /** OK and the D-pad: remapping their single press would lock the owner out of every screen, Setup included. */
 fun isNavKey(keyCode: Int) = keyCode in NAV_KEYS

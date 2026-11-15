@@ -106,4 +106,20 @@ class SetupEditsTest {
         assertEquals(DEFAULT_REMAPS, r.resetRemaps().remaps)
         assertEquals(r.favorites, r.resetRemaps().favorites)
     }
+
+    @Test fun cannotRemoveLastWayHome() {
+        val c = Config(remaps = listOf(Remap(3, Press.SINGLE, Action.Back), Remap(3, Press.LONG, Action.QuickPanel)))
+        assertEquals(c, c.removeRemap(3, Press.LONG)) // Home single goes Back, nothing else opens Cherrypicked
+        assertEquals(c, c.putRemap(Remap(3, Press.LONG, Action.Nothing)))
+        val bare = Config(remaps = emptyList()) // only the implicit Home single
+        assertEquals(bare, bare.putRemap(Remap(3, Press.SINGLE, Action.Back)))
+        assertEquals(listOf(Remap(3, Press.LONG, Action.QuickPanel)), c.removeRemap(3, Press.SINGLE).remaps) // Home single back
+    }
+
+    @Test fun canRemapHomeSingleIfLongStillOpensPanel() {
+        val r = Remap(3, Press.SINGLE, Action.OpenApp("x.y"))
+        assertEquals(DEFAULT_REMAPS + r, Config().putRemap(r).remaps)
+        val viaMenu = Config(remaps = listOf(Remap(menu, Press.SINGLE, Action.Home)))
+        assertTrue(Remap(3, Press.SINGLE, Action.Back) in viaMenu.putRemap(Remap(3, Press.SINGLE, Action.Back)).remaps)
+    }
 }

@@ -40,6 +40,7 @@ private const val DIM = 0x99E9EAEE.toInt()
 private const val FOCUS_BG = 0x33E0233F
 private const val TEST_PROMPT = "Press any button on your remote…"
 
+private const val WAY_HOME = "Keep a way back to Cherrypicked"
 private fun remapId(key: Int, press: Press) = "remap:$key:${press.name}"
 private fun pressLabel(p: Press) = p.name.lowercase().replaceFirstChar(Char::uppercase)
 
@@ -173,7 +174,9 @@ class SetupActivity : Activity() {
             Row(remapText(s.r)),
             Row("Change action", "change") { sub = Sub.PickAction(s.r.keyCode, s.r.press) },
             Row(if (config.removeRemap(s.r.keyCode, s.r.press).remaps.size < config.remaps.size - 1) "Remove (also removes Double/Long)" else "Remove", "remove") {
-                edit { it.removeRemap(s.r.keyCode, s.r.press) }; sub = null
+                edit { it.removeRemap(s.r.keyCode, s.r.press) }
+                if (config.remaps.any { it.keyCode == s.r.keyCode && it.press == s.r.press }) buttonsNote = WAY_HOME // refused
+                sub = null
             },
         )
         Sub.Learn -> listOf(Row("Press the button to change… (waits ${KeyLearn.WINDOW_MS / 1000} s)"))
@@ -182,7 +185,12 @@ class SetupActivity : Activity() {
             else Row(pressLabel(p) + if (isNavKey(s.key)) ": needed to move around" else ": Set a single press first")
         }
         is Sub.PickAction -> {
-            fun pick(a: Action, text: String) = Row(text, "act:${a.encode()}") { edit { it.putRemap(Remap(s.key, s.press, a)) }; sub = null }
+            fun pick(a: Action, text: String) = Row(text, "act:${a.encode()}") {
+                val r = Remap(s.key, s.press, a)
+                edit { it.putRemap(r) }
+                if (r !in config.remaps) buttonsNote = WAY_HOME // refused
+                sub = null
+            }
             listOf(Row("${KeyNames.label(s.key)} · ${pressLabel(s.press)} →")) +
                 apps.filter { it.pkg !in config.hidden }.map { pick(Action.OpenApp(it.pkg), it.label) } +
                 inputs.map { pick(Action.OpenInput(it.id), "Input: ${it.label}") } +
