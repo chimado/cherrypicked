@@ -24,6 +24,8 @@ class OverlayProtocolTest {
         Msg.Closed,
         Msg.Run(Action.SleepTimer),
         Msg.Idle(7),
+        Msg.Dismiss,
+        Msg.Failed("Sleep timer off"),
     ).forEach(::roundTrip)
 
     @Test fun runCarriesEncodedActions() = listOf(

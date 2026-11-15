@@ -22,7 +22,8 @@ class OverlayService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var client: Messenger? = null
     private var seen = 0
-    private val notice by lazy { Notice(this, handler, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, ::idleIfDone) }
+    private var lastText = ""
+    private val notice by lazy { Notice(this, handler, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) { failed -> if (failed) reply(Msg.Failed(lastText)); idleIfDone() } }
     private val inbox = Messenger(Handler(Looper.getMainLooper()) { onMsg(it); true })
 
     override fun onCreate() {
@@ -49,13 +50,17 @@ class OverlayService : Service() {
         seen++
         m.replyTo?.let { client = it }
         when (val msg = OverlayProtocol.decode(m.toWire())) {
-            is Msg.Notice -> notice.show(msg.text) // its timeout or failure calls idleIfDone
+            is Msg.Notice -> { lastText = msg.text; notice.show(msg.text) } // its timeout or failure calls idleIfDone
+            Msg.Dismiss -> { notice.dismiss(); idleIfDone() }
             else -> idleIfDone() // panel messages arrive in Task 2
         }
     }
 
     private fun idleIfDone() {
-        if (notice.showing) return
-        try { client?.send(OverlayProtocol.encode(Msg.Idle(seen)).toMessage()) } catch (_: RemoteException) {} // :a11y gone: its unbind stops us
+        if (!notice.showing) reply(Msg.Idle(seen))
+    }
+
+    private fun reply(m: Msg) {
+        try { client?.send(OverlayProtocol.encode(m).toMessage()) } catch (_: RemoteException) {} // :a11y gone: its unbind stops us
     }
 }

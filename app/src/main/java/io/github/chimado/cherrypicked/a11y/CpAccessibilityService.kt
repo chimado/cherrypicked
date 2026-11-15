@@ -86,8 +86,9 @@ class CpAccessibilityService : AccessibilityService() {
     /** Picked on each use (the permission can change), but never switched while the panel is open. */
     private fun overlay(): Overlay {
         current?.let { if (it.panelOpen) return it }
-        val o = if (Settings.canDrawOverlays(this) && !remote.failed) remote else {
-            if (!fallbackLogged) { Log.i("CP", "overlay in-process (no permission)"); fallbackLogged = true }
+        val why = if (!Settings.canDrawOverlays(this)) "no permission" else remote.failure
+        val o = if (why == null) remote else {
+            if (!fallbackLogged) { Log.i("CP", "overlay in-process ($why)"); fallbackLogged = true }
             inProcess
         }
         current = o
@@ -114,7 +115,7 @@ class CpAccessibilityService : AccessibilityService() {
     private val screenRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             Log.i("CP", "${i.action?.substringAfterLast('.')} pid=${Process.myPid()} t=${SystemClock.elapsedRealtime()}")
-            if (i.action == Intent.ACTION_SCREEN_OFF) current?.closePanel()
+            if (i.action == Intent.ACTION_SCREEN_OFF) { current?.closePanel(); current?.dismissNotice(); if (remoteLazy.isInitialized()) remote.dismissNotice() } // a notice must not reappear on wake
             if (i.action == Intent.ACTION_SCREEN_OFF && sleepEndMs != null) { Log.i("CP", "sleep cleared (screen off)"); saveSleep(null) } // uptime pauses in sleep: a stale timer would fire after wake
             handler.removeCallbacks(wakeCheck) // screen off before settling: drop the pending check
             if (i.action == Intent.ACTION_SCREEN_ON) {
@@ -152,6 +153,7 @@ class CpAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         Log.i("CP", "connected pid=${Process.myPid()}")
         fallbackLogged = false
+        if (remoteLazy.isInitialized()) remote.reset()
         bootCheck()
         handler.removeCallbacks(engineTimer)
         engine.reset()

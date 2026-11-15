@@ -14,11 +14,11 @@ import io.github.chimado.cherrypicked.Theme
 
 /**
  * A small top-centre pill (TCL's toast quota blocks Toasts), drawn by whichever process hosts it with window [type].
- * The view exists only while shown. [onHidden] runs when a notice times out or fails to show (not when replaced).
+ * The view exists only while shown. [onHidden] runs when a notice times out (false) or fails to show (true), not when replaced.
  */
-class Notice(private val svc: Context, private val handler: Handler, private val type: Int, private val onHidden: () -> Unit = {}) {
+class Notice(private val svc: Context, private val handler: Handler, private val type: Int, private val onHidden: (failed: Boolean) -> Unit = {}) {
     private var view: View? = null
-    private val hide = Runnable { dismiss(); onHidden() }
+    private val hide = Runnable { dismiss(); onHidden(false) }
 
     val showing get() = view != null
 
@@ -48,7 +48,7 @@ class Notice(private val svc: Context, private val handler: Handler, private val
             svc.getSystemService(WindowManager::class.java).addView(v, lp)
             view = v
             handler.postDelayed(hide, 2500)
-        } catch (e: RuntimeException) { Log.w("CP", "notice not shown", e); onHidden() }
+        } catch (e: RuntimeException) { Log.w("CP", "notice not shown", e); onHidden(true) }
     }
 
     fun dismiss() {
