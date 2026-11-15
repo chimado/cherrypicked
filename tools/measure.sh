@@ -58,14 +58,15 @@ idle_frames=$(ad shell dumpsys SurfaceFlinger --latency "$layer" | awk 'NR>1 && 
 log "idle_cpu_ticks_30s: $((t1 - t0))   idle_frames_30s: $idle_frames   (layer: $layer)"
 
 # Navigation: frame intervals while focus animates.
+iv=$(mktemp); trap 'rm -f "$iv"' EXIT
 ad shell dumpsys SurfaceFlinger --latency-clear >/dev/null
 for k in 22 22 21 21 20 22 22 19 21; do ad shell input keyevent $k; sleep 0.5; done
 ad shell dumpsys SurfaceFlinger --latency "$layer" | awk 'NR>1 && $2>0 && $2<9e18 {print $2}' |
-  awk 'NR>1{d=($1-p)/1e6; if(d<200) print d} {p=$1}' | sort -n > /tmp/claude-1000/cp_iv.txt
-n=$(wc -l < /tmp/claude-1000/cp_iv.txt)
+  awk 'NR>1{d=($1-p)/1e6; if(d<200) print d} {p=$1}' | sort -n > "$iv"
+n=$(wc -l < "$iv")
 if [ "$n" -gt 0 ]; then
-  p50=$(awk -v n="$n" 'NR==int(n*0.5)+1' /tmp/claude-1000/cp_iv.txt); p95=$(awk -v n="$n" 'NR==int(n*0.95)+1' /tmp/claude-1000/cp_iv.txt)
-  slow=$(awk '$1>34' /tmp/claude-1000/cp_iv.txt | wc -l); mx=$(tail -1 /tmp/claude-1000/cp_iv.txt)
+  p50=$(awk -v n="$n" 'NR==int(n*0.5)+1' "$iv"); p95=$(awk -v n="$n" 'NR==int(n*0.95)+1' "$iv")
+  slow=$(awk '$1>34' "$iv" | wc -l); mx=$(tail -1 "$iv")
   log "nav_frames: $n  interval_ms p50 $p50  p95 $p95  max $mx  over34ms $slow"
 else log "nav_frames: 0 (layer latency unavailable)"; fi
 
