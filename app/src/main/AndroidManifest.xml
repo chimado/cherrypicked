@@ -8,7 +8,9 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
-    <!-- Package visibility (API 30+): see every launchable app. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Package visibility (API 30+): see every launchable app, and TV-input (passthrough/channels) handlers. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -17,6 +19,10 @@
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="content" android:host="android.media.tv" />
         </intent>
     </queries>
 
@@ -53,5 +59,26 @@
             android:process=":setup"
             android:screenOrientation="landscape"
             android:theme="@style/AppTheme" />
+        <service
+            android:name=".a11y.CpAccessibilityService"
+            android:exported="true"
+            android:label="Cherrypicked"
+            android:process=":a11y"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/a11y_service" />
+        </service>
+        <receiver
+            android:name=".a11y.BootReceiver"
+            android:exported="true"
+            android:process=":a11y">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

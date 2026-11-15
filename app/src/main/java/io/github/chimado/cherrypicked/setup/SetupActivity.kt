@@ -17,6 +17,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
 import io.github.chimado.cherrypicked.apps.AppCatalog
+import io.github.chimado.cherrypicked.health.HomeHealth
 import io.github.chimado.cherrypicked.home.AppEntry
 import io.github.chimado.cherrypicked.home.HomeModel
 import io.github.chimado.cherrypicked.store.Config
@@ -121,7 +122,7 @@ class SetupActivity : Activity() {
         apps.forEach { a -> add(Row((if (a.pkg in config.hidden) "✓  " else "     ") + a.label, { edit { it.toggleHidden(a.pkg) } })) }
 
         add(Row("Home button", header = true, key = "home"))
-        if (isHomeConnected()) add(Row("Connected", header = true)) else {
+        if (HomeHealth.isEnabled(this@SetupActivity)) add(Row("Connected", header = true)) else {
             add(Row("Not connected", header = true))
             add(Row("1. Settings > Accessibility > Cherrypicked > On", header = true))
             add(Row("2. If that is greyed out, run from a computer: adb shell settings put secure enabled_accessibility_services <current list>:$PKG/.a11y.CpAccessibilityService", header = true))
@@ -135,9 +136,6 @@ class SetupActivity : Activity() {
             if (!open(Settings.ACTION_USAGE_ACCESS_SETTINGS)) note = "adb shell appops set $PKG GET_USAGE_STATS allow"
         }))
     }
-
-    // TODO(Task 10): replace with HomeHealth.isEnabled once it exists.
-    private fun isHomeConnected() = true
 
     @Suppress("DEPRECATION")
     private fun usageAllowed() = getSystemService(AppOpsManager::class.java)

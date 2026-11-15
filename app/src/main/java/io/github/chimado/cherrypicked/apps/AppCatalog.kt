@@ -76,6 +76,8 @@ class AppCatalog(private val ctx: Context) {
             true
         } catch (_: ActivityNotFoundException) {
             false
+        } catch (_: SecurityException) {
+            false
         }
     }
 }

@@ -24,6 +24,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
 import io.github.chimado.cherrypicked.apps.AppCatalog
+import io.github.chimado.cherrypicked.health.HomeHealth
 import io.github.chimado.cherrypicked.rank.UsageLedger
 import io.github.chimado.cherrypicked.rank.foregroundLast14d
 import io.github.chimado.cherrypicked.store.Config
@@ -200,8 +201,7 @@ class HomeActivity : Activity() {
         // Usage stats can take tens of ms; ranking drifts slowly, so 10 min staleness is fine.
         if (now - fgAt > 10 * 60_000L) { fg = foregroundLast14d(this); fgAt = now }
         val scores = ledger.scores(now, fg)
-        // TODO(Task 10): homeBroken = !HomeHealth.isEnabled(this)
-        val next = HomeModel.build(apps, config, scores, homeBroken = false) to Suggester.next(apps, config, scores)
+        val next = HomeModel.build(apps, config, scores, homeBroken = !HomeHealth.isEnabled(this)) to Suggester.next(apps, config, scores)
         if (force || next != shown) {
             shown = next
             build(next.first, next.second)
