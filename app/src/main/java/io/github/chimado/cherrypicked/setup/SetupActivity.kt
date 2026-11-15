@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.IntentFilter
 import android.content.Intent
 import android.graphics.Typeface
+import android.net.Uri
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -74,6 +75,7 @@ class SetupActivity : Activity() {
     private var sub: Sub? = null
     private var note: String? = null
     private var usageNote = false
+    private var overlayNote = false
     private var started = false
     private var learnText: String? = null
     private var buttonsNote: String? = null
@@ -224,6 +226,12 @@ class SetupActivity : Activity() {
         }
         add(Row("Open accessibility settings", "a11y") { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) })
 
+        add(Row("Display over other apps", "#overlay"))
+        add(Row(if (Settings.canDrawOverlays(this@SetupActivity)) "Allowed (saves memory)" else "Not allowed"))
+        add(Row("Lets the quick panel and notices run in their own short-lived process, so Cherrypicked uses less memory."))
+        add(Row("Open settings", "overlay-perm") { overlayNote = !open(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$PKG")) })
+        if (overlayNote) add(Row("No settings screen for this here. From a computer run: adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow"))
+
         add(Row("Buttons", "#buttons"))
         val remaps = config.remaps.sortedWith(compareBy({ it.keyCode }, { it.press }))
         if (!bound) {
@@ -254,8 +262,8 @@ class SetupActivity : Activity() {
     private fun usageAllowed() = getSystemService(AppOpsManager::class.java)
         .unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName) == AppOpsManager.MODE_ALLOWED
 
-    private fun open(action: String): Boolean = try {
-        startActivity(Intent(action)); true
+    private fun open(action: String, data: Uri? = null): Boolean = try {
+        startActivity(Intent(action, data)); true
     } catch (_: ActivityNotFoundException) { false }
 
     private fun focusedId() = currentFocus?.tag as? String
