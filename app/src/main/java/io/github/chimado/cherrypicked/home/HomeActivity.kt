@@ -237,9 +237,12 @@ class HomeActivity : Activity() {
             val m = TileView.margin(glow)
             val total = n * tw + (n - 1) * gap
             val start = (w - total) / 2
-            val box = FrameLayout(this).apply { clipChildren = false }
+            // Tier 2 sits at 35% alpha; without this the row would be drawn through an offscreen layer every frame.
+            val box = object : FrameLayout(this) { override fun hasOverlappingRendering() = false }.apply { clipChildren = false }
+            val r = rVw * vw * s
+            val glowMask = TileView.glow(tw, th, r, glow)
             its += tiles.mapIndexed { i, t ->
-                val v = TileView(this, art(t, tw.toInt(), th.toInt(), used), tw, th, rVw * vw * s, 0.35f * vw * s, glow)
+                val v = TileView(this, art(t, tw.toInt(), th.toInt(), r, used), tw, th, r, 0.35f * vw * s, glow, glowMask)
                 box.addView(v, FrameLayout.LayoutParams((tw + 2 * m).toInt(), (th + 2 * m).toInt()).apply {
                     leftMargin = (i * (tw + gap)).toInt()
                 })
@@ -297,15 +300,15 @@ class HomeActivity : Activity() {
         cx += centres
     }
 
-    private fun art(t: Tile, tw: Int, th: Int, used: MutableSet<String>): Drawable = when (t) {
+    private fun art(t: Tile, tw: Int, th: Int, r: Float, used: MutableSet<String>): Drawable = when (t) {
         is Tile.App -> {
-            used += catalog.key(t.app.pkg, tw, th)
-            BitmapDrawable(resources, catalog.tileBitmap(t.app.pkg, tw, th))
+            used += catalog.key(t.app.pkg, tw, th, r)
+            BitmapDrawable(resources, catalog.tileBitmap(t.app.pkg, tw, th, r))
         }
-        Tile.PickFavorites -> catalog.card("Pick favorites")
-        Tile.AllApps -> catalog.card("Apps")
-        Tile.Setup -> catalog.card("Setup")
-        Tile.FixHome -> catalog.card("Fix Home")
+        Tile.PickFavorites -> catalog.card("Pick favorites", r = r)
+        Tile.AllApps -> catalog.card("Apps", r = r)
+        Tile.Setup -> catalog.card("Setup", r = r)
+        Tile.FixHome -> catalog.card("Fix Home", r = r)
     }
 
     private fun act(t: Tile) {

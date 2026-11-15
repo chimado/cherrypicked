@@ -99,6 +99,8 @@ class AllAppsActivity : Activity() {
         val left = (w - (COLS * tw + (COLS - 1) * gap)) / 2
         val labelH = 2.4f * vw
         val rowH = (m + th + labelH + 1.6f * vw).toInt()
+        val r = 1.2f * vw
+        val glowMask = TileView.glow(tw, th, r, glow)
         val used = HashSet<String>()
         list.removeAllViews()
         val rv = mutableListOf<View>()
@@ -109,9 +111,9 @@ class AllAppsActivity : Activity() {
             val box = FrameLayout(this).apply { clipChildren = false }
             tv += row.mapIndexed { i, a ->
                 val x = left + i * (tw + gap)
-                used += catalog.key(a.pkg, tw.toInt(), th.toInt())
-                val v = TileView(this, BitmapDrawable(resources, catalog.tileBitmap(a.pkg, tw.toInt(), th.toInt())),
-                    tw, th, 1.2f * vw, 0.3f * vw, glow)
+                used += catalog.key(a.pkg, tw.toInt(), th.toInt(), r)
+                val v = TileView(this, BitmapDrawable(resources, catalog.tileBitmap(a.pkg, tw.toInt(), th.toInt(), r)),
+                    tw, th, r, 0.3f * vw, glow, glowMask)
                 box.addView(v, FrameLayout.LayoutParams((tw + 2 * m).toInt(), (th + 2 * m).toInt()).apply { leftMargin = (x - m).toInt() })
                 val label = TextView(this).apply {
                     text = a.label; typeface = regular; maxLines = 1; includeFontPadding = false

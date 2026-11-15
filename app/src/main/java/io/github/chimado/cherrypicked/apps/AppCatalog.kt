@@ -8,7 +8,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import io.github.chimado.cherrypicked.Theme
@@ -51,12 +55,19 @@ class AppCatalog(private val ctx: Context) {
     private val bitmaps = HashMap<String, Bitmap>()
 
     /**
-     * [tileArt] rasterised once at tile pixel size and cached, so full-density banners are never kept
-     * and a rebuild decodes nothing. Call [evict] when the package changes and [retain] after a rebuild.
+     * [tileArt] rasterised once at tile pixel size with corner radius [r] baked in, and cached, so full-density
+     * banners are never kept, a rebuild decodes nothing and drawing needs no clip.
+     * Call [evict] when the package changes and [retain] after a rebuild.
      */
-    fun tileBitmap(pkg: String, w: Int, h: Int): Bitmap = bitmaps.getOrPut(key(pkg, w, h)) {
+    fun tileBitmap(pkg: String, w: Int, h: Int, r: Float): Bitmap = bitmaps.getOrPut(key(pkg, w, h, r)) {
         val d = tileArt(pkg)
-        Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { d.setBounds(0, 0, w, h); d.draw(Canvas(it)) }
+        Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also {
+            val c = Canvas(it)
+            d.setBounds(0, 0, w, h); d.draw(c)
+            // Clear everything outside the rounded rect, anti-aliased.
+            val outside = Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), r, r, Path.Direction.CW); fillType = Path.FillType.INVERSE_WINDING }
+            c.drawPath(outside, Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) })
+        }
     }
 
     fun evict(pkg: String) { bitmaps.keys.removeAll { it.startsWith("$pkg@") } }
@@ -64,10 +75,10 @@ class AppCatalog(private val ctx: Context) {
     /** Drops every cached bitmap not in [keys] (as built by [key]). */
     fun retain(keys: Set<String>) { bitmaps.keys.retainAll(keys) }
 
-    fun key(pkg: String, w: Int, h: Int) = "$pkg@${w}x$h"
+    fun key(pkg: String, w: Int, h: Int, r: Float) = "$pkg@${w}x$h/$r"
 
-    /** Fallback/synthetic tile art: [icon] centred on a #2a2b30 card with [label] underneath (or just the label). */
-    fun card(label: String, icon: Drawable? = null): Drawable = CardDrawable(label, icon, font)
+    /** Fallback/synthetic tile art: [icon] centred on a #2a2b30 card with corner radius [r] and [label] underneath (or just the label). */
+    fun card(label: String, icon: Drawable? = null, r: Float = 0f): Drawable = CardDrawable(label, icon, font, r)
 
     fun launch(pkg: String): Boolean {
         val i = intentFor(pkg) ?: return false
@@ -82,15 +93,15 @@ class AppCatalog(private val ctx: Context) {
     }
 }
 
-private class CardDrawable(private val label: String, private val icon: Drawable?, font: Typeface) : Drawable() {
-    private val bg = Paint().apply { color = 0xFF2A2B30.toInt() }
+private class CardDrawable(private val label: String, private val icon: Drawable?, font: Typeface, private val r: Float) : Drawable() {
+    private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF2A2B30.toInt() }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = font; color = Theme.TEXT; textAlign = Paint.Align.CENTER
     }
 
     override fun draw(c: Canvas) {
         val b = bounds
-        c.drawRect(b, bg)
+        c.drawRoundRect(RectF(b), r, r, bg)
         val h = b.height().toFloat()
         text.textSize = h * 0.13f
         val shown = if (text.measureText(label) > b.width() * 0.9f)
@@ -110,5 +121,5 @@ private class CardDrawable(private val label: String, private val icon: Drawable
     override fun setAlpha(alpha: Int) {}
     override fun setColorFilter(cf: ColorFilter?) {}
     @Deprecated("Deprecated in Java")
-    override fun getOpacity() = PixelFormat.OPAQUE
+    override fun getOpacity() = PixelFormat.TRANSLUCENT // rounded corners
 }
