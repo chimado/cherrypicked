@@ -51,3 +51,15 @@
 **Why `:a11y` grows:** the first overlay window drawn in `:a11y` (the quick panel or a notice) loads Android's view and graphics stack into that process: about +3 MB native, +6 MB Java heap and +3 MB of libraries. It stays loaded, and trim-memory doesn't release it. Sharing one font brought it down from 20 to 18 MB.
 
 **The alternative:** run the panel and notices in a separate on-demand process. That needs the "display over other apps" permission, which is one more setup step, so it's the owner's call.
+
+## Phase 2.1: panel and notices in their own process, 2026-11-15 06:00
+
+| Measure | Result | Budget | |
+|---|---|---|---|
+| `:a11y` at baseline | 6.6 MB | — | |
+| `:a11y` after 10 panel open/close cycles | 12.8 MB, 0 views | ≤ 15 MB | ✅ |
+| `:ui` process after closing | gone (`pidof` empty) | gone within 3 s | ✅ |
+| Long-press to panel visible, cold `:ui` | 131 ms | ≤ 600 ms | ✅ |
+| Fallback with the permission denied | panel opens in `:a11y` | works | ✅ |
+
+`:a11y` now draws nothing. Its growth from about 6 to 12 MB is ART heap from ordinary activity: no-op test-hook actions cause the same growth. Before this change it was 18–20 MB once an overlay had been shown.

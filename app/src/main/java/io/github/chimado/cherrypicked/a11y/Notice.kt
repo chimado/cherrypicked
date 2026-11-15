@@ -1,6 +1,6 @@
 package io.github.chimado.cherrypicked.a11y
 
-import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
@@ -12,10 +12,15 @@ import android.view.WindowManager
 import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
 
-/** A small top-centre pill drawn by the service (TCL's toast quota blocks Toasts). The view exists only while shown. */
-class Notice(private val svc: AccessibilityService, private val handler: Handler) {
+/**
+ * A small top-centre pill (TCL's toast quota blocks Toasts), drawn by whichever process hosts it with window [type].
+ * The view exists only while shown. [onHidden] runs when a notice times out (false) or fails to show (true), not when replaced.
+ */
+class Notice(private val svc: Context, private val handler: Handler, private val type: Int, private val onHidden: (failed: Boolean) -> Unit = {}) {
     private var view: View? = null
-    private val hide = Runnable { dismiss() }
+    private val hide = Runnable { dismiss(); onHidden(false) }
+
+    val showing get() = view != null
 
     fun show(text: String) {
         dismiss()
@@ -23,11 +28,11 @@ class Notice(private val svc: AccessibilityService, private val handler: Handler
         val w = svc.resources.displayMetrics.widthPixels
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = Theme.vw(2f, w).toInt() }
-        try { // a font or window failure logs instead of killing :a11y
+        try { // a font or window failure logs instead of killing the process
             val v = TextView(svc).apply {
                 this.text = text
                 typeface = Fonts.regular(svc)
@@ -43,7 +48,7 @@ class Notice(private val svc: AccessibilityService, private val handler: Handler
             svc.getSystemService(WindowManager::class.java).addView(v, lp)
             view = v
             handler.postDelayed(hide, 2500)
-        } catch (e: RuntimeException) { Log.w("CP", "notice not shown", e) }
+        } catch (e: RuntimeException) { Log.w("CP", "notice not shown", e); onHidden(true) }
     }
 
     fun dismiss() {
