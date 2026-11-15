@@ -32,6 +32,13 @@ import io.github.chimado.cherrypicked.keys.Remap
 import io.github.chimado.cherrypicked.keys.encode
 import io.github.chimado.cherrypicked.store.Config
 import io.github.chimado.cherrypicked.store.ConfigStore
+import io.github.chimado.cherrypicked.store.CONFIG_FILE_NAME
+import io.github.chimado.cherrypicked.store.ImportCheck
+import io.github.chimado.cherrypicked.store.MAX_IMPORT_BYTES
+import io.github.chimado.cherrypicked.store.checkImport
+import io.github.chimado.cherrypicked.store.toJson
+import io.github.chimado.cherrypicked.store.writeDurably
+import java.io.File
 import java.io.IOException
 import kotlin.math.max
 
@@ -55,6 +62,7 @@ private sealed class Sub(val opener: String, val section: String) {
     object PickFavorite : Sub("add-fav", "favorites")
     object PickMain : Sub("main", "autoopen")
     object Hidden : Sub("hidden", "hidden")
+    class ImportConfirm(val check: ImportCheck.Ok) : Sub("import", "backup")
     class RemapActions(val r: Remap) : Sub(remapId(r.keyCode, r.press), "buttons")
     object Learn : Sub("add-remap", "buttons")
     class PickPress(val key: Int) : Sub("add-remap", "buttons")
@@ -79,6 +87,7 @@ class SetupActivity : Activity() {
     private var started = false
     private var learnText: String? = null
     private var buttonsNote: String? = null
+    private var backupNote: String? = null
     private var renders = 0
     private var armedFor = -1 // reset is armed only in the render right after its first OK
 
@@ -172,6 +181,10 @@ class SetupActivity : Activity() {
                 }
         Sub.PickMain -> listOf(Row("Main app")) +
             apps.map { a -> Row(a.label, "pick:${a.pkg}") { edit { it.setMainApp(a.pkg) }; sub = null } }
+        is Sub.ImportConfirm -> listOf(Row("Import this setup?")) + s.check.summary.map { Row(it) } + listOf(
+            Row("Apply", "apply") { edit { s.check.config }; if (note == null) backupNote = "Setup imported"; sub = null },
+            Row("Cancel", "cancel") { sub = null },
+        )
         Sub.Hidden -> listOf(Row("Hidden apps")) +
             apps.map { a -> Row((if (a.pkg in config.hidden) "✓  " else "     ") + a.label, "hide:${a.pkg}") { edit { it.toggleHidden(a.pkg) } } }
         is Sub.RemapActions -> listOf(
@@ -258,6 +271,30 @@ class SetupActivity : Activity() {
         add(Row("Lets Cherrypicked rank apps by how much you watch them, not only by launches from Cherrypicked."))
         add(Row("Open usage access settings", "usage") { usageNote = !open(Settings.ACTION_USAGE_ACCESS_SETTINGS) })
         if (usageNote) add(Row("No settings screen for this here. From a computer run: adb shell appops set $PKG GET_USAGE_STATS allow"))
+
+        add(Row("Backup", "#backup"))
+        backupNote?.let { add(Row(it)) }
+        add(Row("Export setup", "export") { backupNote = exportSetup() })
+        add(Row("Import setup…", "import") { importSetup() })
+    }
+
+    private fun backupFile() = getExternalFilesDir(null)?.let { File(it, CONFIG_FILE_NAME) }
+
+    private fun exportSetup(): String {
+        val f = backupFile() ?: return "Storage not available"
+        return try { f.writeDurably(store.load().toJson()); "Saved. Copy it off with: adb pull /sdcard/Android/data/$PKG/files/$CONFIG_FILE_NAME" }
+        catch (_: IOException) { "Couldn't save" }
+    }
+
+    private fun importSetup() {
+        val f = backupFile() ?: run { backupNote = "Storage not available"; return }
+        if (!f.exists()) { backupNote = "No setup file. Put one there with: adb push $CONFIG_FILE_NAME /sdcard/Android/data/$PKG/files/"; return }
+        if (f.length() > MAX_IMPORT_BYTES) { backupNote = "File too large"; return }
+        val text = try { f.readText() } catch (_: IOException) { backupNote = "Couldn't read the file"; return }
+        when (val c = checkImport(text, apps.map { it.pkg }.toSet(), ::label)) {
+            is ImportCheck.Refused -> backupNote = c.reason
+            is ImportCheck.Ok -> sub = Sub.ImportConfirm(c)
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -275,6 +312,7 @@ class SetupActivity : Activity() {
         val before = sub
         val id = focusedId()
         buttonsNote = null
+        backupNote = null
         r.onClick?.invoke()
         val now = sub
         when {
