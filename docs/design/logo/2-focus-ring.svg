@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><defs><linearGradient id="mbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#17181B"/><stop offset="1" stop-color="#0D0E10"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#mbg)"/><g transform="">
+  <filter id="mglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="16"/></filter>
+  <rect x="92" y="112" width="328" height="208" rx="48" fill="none" stroke="#E0233F" stroke-width="26" opacity=".7" filter="url(#mglow)"/>
+  <rect x="92" y="112" width="328" height="208" rx="48" fill="#2C2E34" stroke="#E0233F" stroke-width="24"/>
+  <circle cx="256" cy="242" r="46" fill="#E0233F"/>
+  <path d="M258 196 C262 176 274 160 294 150" fill="none" stroke="#E9EAEE" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="240" cy="226" r="9" fill="#E9EAEE" opacity=".85"/>
+  <rect x="92" y="364" width="94" height="56" rx="16" fill="#2C2E34"/>
+  <rect x="209" y="364" width="94" height="56" rx="16" fill="#2C2E34"/>
+  <rect x="326" y="364" width="94" height="56" rx="16" fill="#2C2E34"/></g></svg>

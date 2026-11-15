@@ -5,7 +5,6 @@ import io.github.chimado.cherrypicked.store.Config
 enum class Trigger { BOOT, WAKE }
 
 object AutoOpenPolicy {
-    const val WAKE_SETTLE_MS = 2000L
 
     /**
      * Package to open, or null. A wake onto a TV input (HDMI/CEC took the screen), already in main, or with an

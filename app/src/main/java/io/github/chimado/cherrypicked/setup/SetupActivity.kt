@@ -54,6 +54,7 @@ private sealed class Sub(val opener: String, val section: String) {
     class FavActions(val pkg: String) : Sub("fav:$pkg", "favorites")
     object PickFavorite : Sub("add-fav", "favorites")
     object PickMain : Sub("main", "autoopen")
+    object Hidden : Sub("hidden", "hidden")
     class RemapActions(val r: Remap) : Sub(remapId(r.keyCode, r.press), "buttons")
     object Learn : Sub("add-remap", "buttons")
     class PickPress(val key: Int) : Sub("add-remap", "buttons")
@@ -171,6 +172,8 @@ class SetupActivity : Activity() {
                 }
         Sub.PickMain -> listOf(Row("Main app")) +
             apps.map { a -> Row(a.label, "pick:${a.pkg}") { edit { it.setMainApp(a.pkg) }; sub = null } }
+        Sub.Hidden -> listOf(Row("Hidden apps")) +
+            apps.map { a -> Row((if (a.pkg in config.hidden) "✓  " else "     ") + a.label, "hide:${a.pkg}") { edit { it.toggleHidden(a.pkg) } } }
         is Sub.RemapActions -> listOf(
             Row(remapText(s.r)),
             Row("Change action", "change") { sub = Sub.PickAction(s.r.keyCode, s.r.press) },
@@ -213,7 +216,7 @@ class SetupActivity : Activity() {
         add(Row("Main app: " + (config.mainApp?.let(::label) ?: "none"), "main") { sub = Sub.PickMain })
 
         add(Row("Hidden apps", "#hidden"))
-        apps.forEach { a -> add(Row((if (a.pkg in config.hidden) "✓  " else "     ") + a.label, "hide:${a.pkg}") { edit { it.toggleHidden(a.pkg) } }) }
+        add(Row("Choose hidden apps… (" + config.hidden.count { h -> apps.any { it.pkg == h } } + " hidden)", "hidden") { sub = Sub.Hidden })
 
         val bound = HomeHealth.isEnabled(this@SetupActivity)
         add(Row("Home button", "#home"))

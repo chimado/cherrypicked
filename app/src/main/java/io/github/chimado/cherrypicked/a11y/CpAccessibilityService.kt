@@ -118,11 +118,10 @@ class CpAccessibilityService : AccessibilityService() {
             Log.i("CP", "${i.action?.substringAfterLast('.')} pid=${Process.myPid()} t=${SystemClock.elapsedRealtime()}")
             if (i.action == Intent.ACTION_SCREEN_OFF) { current?.closePanel(); current?.dismissNotice(); if (remoteLazy.isInitialized()) remote.dismissNotice(); if (inProcessLazy.isInitialized()) inProcess.dismissNotice() } // a notice must not reappear on wake
             if (i.action == Intent.ACTION_SCREEN_OFF && sleepEndMs != null) { Log.i("CP", "sleep cleared (screen off)"); saveSleep(null) } // uptime pauses in sleep: a stale timer would fire after wake
-            handler.removeCallbacks(wakeCheck) // screen off before settling: drop the pending check
-            if (i.action == Intent.ACTION_SCREEN_ON) {
-                refreshRemaps()
-                handler.postDelayed(wakeCheck, AutoOpenPolicy.WAKE_SETTLE_MS)
-            }
+            if (i.action == Intent.ACTION_SCREEN_ON) refreshRemaps()
+            // No wait on wake: open main as the screen goes off, so it is already up when the TV turns on; check
+            // again on wake in case that open didn't stick. A TV that sleeps on an input is left on it both times.
+            handler.post(wakeCheck)
         }
     }
 
