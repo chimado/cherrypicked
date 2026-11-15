@@ -15,13 +15,13 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
+import io.github.chimado.cherrypicked.store.ConfigStore
 import io.github.chimado.cherrypicked.a11y.Fonts
 import io.github.chimado.cherrypicked.inputs.InputCatalog
 import io.github.chimado.cherrypicked.keys.Action
 import io.github.chimado.cherrypicked.setup.SetupActivity
 import io.github.chimado.cherrypicked.timer.SleepTimer
 
-private const val FOCUS_BG = 0x33E0233F // Setup's focus tint
 private const val IDLE_MS = 15_000L // closes itself after this long without a panel key
 
 internal fun sleepLabel(endMs: Long?, nowMs: Long): String {
@@ -55,6 +55,7 @@ class QuickPanel(
 ) {
     private class Row(val id: String, val text: () -> String, val ok: () -> Unit)
 
+    private val store by lazy { ConfigStore(svc.filesDir) } // skips parsing while config.json is unchanged
     private var list: LinearLayout? = null
     private var rows: List<Row> = emptyList()
     private var sel = 0
@@ -72,6 +73,7 @@ class QuickPanel(
     /** False if the window could not be drawn (logged). */
     fun open(): Boolean {
         if (isOpen()) return true
+        Theme.load(store.load()) // this process may have missed an appearance change
         w = svc.resources.displayMetrics.widthPixels
         rows = buildList {
             add(Row("sleep", { sleepLabel(sleepEnd(), System.currentTimeMillis()) }) { run(Action.SleepTimer); refresh(sel) })
@@ -155,7 +157,7 @@ class QuickPanel(
             text = rows[i].text()
             val f = i == sel
             setTextColor(if (f) Theme.ACCENT else Theme.TEXT)
-            background = if (f) LayerDrawable(arrayOf(ColorDrawable(FOCUS_BG), ColorDrawable(Theme.ACCENT))).apply {
+            background = if (f) LayerDrawable(arrayOf(ColorDrawable(Theme.FOCUS_BG), ColorDrawable(Theme.ACCENT))).apply {
                 setLayerWidth(1, Theme.vw(0.3f, w).toInt())
                 setLayerGravity(1, Gravity.START or Gravity.FILL_VERTICAL)
             } else null

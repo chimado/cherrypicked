@@ -15,8 +15,9 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
-import io.github.chimado.cherrypicked.Theme
 import io.github.chimado.cherrypicked.home.AppEntry
+
+private const val TILE_TEXT = 0xFFE9EAEE.toInt() // tiles keep light text on their dark card, whatever the theme
 
 class AppCatalog(private val ctx: Context) {
     private val pm = ctx.packageManager
@@ -104,7 +105,7 @@ internal fun <T : Any> tryLaunch(intent: T?, start: (T) -> Unit): Boolean {
 private class CardDrawable(private val label: String, private val icon: Drawable?, font: Typeface, private val r: Float) : Drawable() {
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF2A2B30.toInt() }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = font; color = Theme.TEXT; textAlign = Paint.Align.CENTER
+        typeface = font; color = TILE_TEXT; textAlign = Paint.Align.CENTER
     }
 
     override fun draw(c: Canvas) {
@@ -132,9 +133,9 @@ private class CardDrawable(private val label: String, private val icon: Drawable
     override fun getOpacity() = PixelFormat.TRANSLUCENT // rounded corners
 }
 
-/** A rounded-rect outline (a screen), drawn in [Theme.TEXT]; used on input tiles. */
+/** A rounded-rect outline (a screen), drawn in [TILE_TEXT]; used on input tiles. */
 object InputIcon : Drawable() {
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Theme.TEXT; style = Paint.Style.STROKE }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TILE_TEXT; style = Paint.Style.STROKE }
     override fun draw(c: Canvas) {
         val b = bounds
         p.strokeWidth = b.width() * 0.07f

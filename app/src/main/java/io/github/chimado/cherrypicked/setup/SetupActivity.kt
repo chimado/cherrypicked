@@ -43,8 +43,6 @@ import java.io.IOException
 import kotlin.math.max
 
 private const val PKG = "io.github.chimado.cherrypicked"
-private const val DIM = 0x99E9EAEE.toInt()
-private const val FOCUS_BG = 0x33E0233F
 private const val TEST_PROMPT = "Press any button on your remote…"
 
 private const val WAY_HOME = "Keep a way back to Cherrypicked"
@@ -109,6 +107,7 @@ class SetupActivity : Activity() {
         super.onCreate(savedInstanceState)
         store = ConfigStore(filesDir)
         config = store.load()
+        Theme.load(config)
         apps = AppCatalog(this).apps().sortedBy { it.label.lowercase() }
         inputs = InputCatalog(this).inputs()
         val b = windowManager.currentWindowMetrics.bounds
@@ -336,14 +335,14 @@ class SetupActivity : Activity() {
         text = r.text
         typeface = regular
         setTextSize(TypedValue.COMPLEX_UNIT_PX, vw * if (r.section) 1.4f else 1.7f)
-        setTextColor(if (r.section) Theme.ACCENT else if (r.onClick == null) DIM else Theme.TEXT)
+        setTextColor(if (r.section) Theme.ACCENT else if (r.onClick == null) Theme.DIM else Theme.TEXT)
         setPadding((1.5 * vw).toInt(), (if (r.section) 2.2 * vw else 0.9 * vw).toInt(), (1.5 * vw).toInt(), (0.9 * vw).toInt())
         if (r.onClick != null) {
             tag = r.id
             isFocusable = true
             setOnClickListener { click(r) }
             setOnFocusChangeListener { v, f ->
-                v.background = if (f) GradientDrawable().apply { setColor(FOCUS_BG); setStroke(0, 0) } else ColorDrawable(0)
+                v.background = if (f) GradientDrawable().apply { setColor(Theme.FOCUS_BG); setStroke(0, 0) } else ColorDrawable(0)
                 (v as TextView).setTextColor(if (f) Theme.ACCENT else Theme.TEXT)
                 // Focus moved off an armed reset: disarm. Posted, so a removal by render (parent gone) doesn't count.
                 if (!f && r.id == "reset-remaps") v.post {
