@@ -160,6 +160,7 @@ class CpAccessibilityService : AccessibilityService() {
         val f = File(filesDir, "last_boot_count")
         val last = try { f.readText().trim().toInt() } catch (_: IOException) { null } catch (_: NumberFormatException) { null }
         if (boot < 0 || boot == last) return
+        if (sleepFile.delete()) Log.i("CP", "sleep cleared (boot)") // a reboot or power cut ends the timer; restoreSleep runs after
         try { f.writeText(boot.toString()) } catch (e: IOException) { Log.w("CP", "boot count not saved", e); return } // never risk opening twice
         if (SystemClock.elapsedRealtime() > BOOT_WINDOW_MS) { Log.i("CP", "boot open=null (late bind)"); return }
         Log.i("CP", "boot open=${autoOpen(this, Trigger.BOOT, null, emptySet())}")
