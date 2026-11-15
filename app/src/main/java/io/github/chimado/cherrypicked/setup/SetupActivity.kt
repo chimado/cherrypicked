@@ -2,7 +2,6 @@ package io.github.chimado.cherrypicked.setup
 
 import android.app.Activity
 import android.app.AppOpsManager
-import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
@@ -264,7 +263,7 @@ class SetupActivity : Activity() {
 
     private fun open(action: String, data: Uri? = null): Boolean = try {
         startActivity(Intent(action, data)); true
-    } catch (_: ActivityNotFoundException) { false }
+    } catch (_: RuntimeException) { false } // ActivityNotFound, or SecurityException from a protected settings screen
 
     private fun focusedId() = currentFocus?.tag as? String
 

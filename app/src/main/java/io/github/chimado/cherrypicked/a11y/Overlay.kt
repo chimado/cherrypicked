@@ -74,6 +74,7 @@ class RemoteOverlay(
 
     private val conn = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            handler.removeCallbacks(bindTimeout)
             remote = Messenger(binder)
             sent = 0
             if (queue.isEmpty()) { unbind(); return } // nothing to show (dismissed while connecting): don't keep :ui alive
@@ -107,7 +108,7 @@ class RemoteOverlay(
         panelOpen = true
         panelOpenedAt = SystemClock.uptimeMillis()
         openSent = Int.MAX_VALUE
-        send(Msg.Open(sleepEnd(), panelOpenedAt))
+        send(Msg.Open(sleepEnd()))
     }
 
     override fun closePanel() {
@@ -130,8 +131,24 @@ class RemoteOverlay(
 
     private fun fail(why: String) { Log.w("CP", "overlay remote $why"); failure = why }
 
-    /** :ui died: any panel died with it, so keys go back to the engine; only notices are worth resending. */
-    private fun rebind() { val q = queue.filterIsInstance<Msg.Notice>(); unbind(); q.forEach(::send) }
+    /** :ui died: an open panel reopens in-process (else later long-presses would only close it); notices are resent. */
+    private fun rebind() {
+        val reopen = panelOpen
+        val q = queue.filterIsInstance<Msg.Notice>()
+        unbind()
+        if (reopen) { fail("ui died"); q.forEach { local.showNotice(it.text) }; panelFailed() } else q.forEach(::send)
+    }
+
+    /** A bind that never connects: hand the queued work to [local] and stay in-process until [reset]. */
+    private val bindTimeout = Runnable {
+        if (remote != null) return@Runnable
+        val q = queue.toList()
+        val reopen = panelOpen
+        unbind()
+        fail("bind timeout")
+        for (m in q) if (m is Msg.Notice) local.showNotice(m.text)
+        if (reopen) panelFailed()
+    }
 
     private fun send(m: Msg) {
         val r = remote
@@ -148,7 +165,7 @@ class RemoteOverlay(
         bound = try {
             ctx.bindService(Intent(ctx, OverlayService::class.java), conn, Context.BIND_AUTO_CREATE)
         } catch (e: SecurityException) { Log.w("CP", "overlay bind refused", e); false }
-        if (bound) { Log.i("CP", "overlay remote bind"); return }
+        if (bound) { Log.i("CP", "overlay remote bind"); handler.postDelayed(bindTimeout, 2000); return }
         try { ctx.unbindService(conn) } catch (_: IllegalArgumentException) {}
         fail("bind failed")
         val q = queue.toList()
@@ -158,6 +175,7 @@ class RemoteOverlay(
     }
 
     private fun unbind() {
+        handler.removeCallbacks(bindTimeout)
         remote = null
         queue.clear()
         panelOpen = false // :ui exits once unbound
@@ -173,7 +191,7 @@ class RemoteOverlay(
             is Msg.Idle -> if (m.seen == sent && queue.isEmpty()) unbind() // else a newer message is in flight
             is Msg.Failed -> { fail("draw failed"); local.showNotice(m.text) } // :ui's Idle follows and unbinds it
             is Msg.Closed -> if (m.seen >= openSent) panelOpen = false
-            Msg.PanelFailed -> { fail("draw failed"); panelFailed() }
+            Msg.PanelFailed -> { fail("draw failed"); if (panelOpen) panelFailed() } // a panel already dismissed stays closed
             else -> {}
         }
     }

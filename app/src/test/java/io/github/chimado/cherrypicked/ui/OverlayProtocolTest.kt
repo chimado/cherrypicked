@@ -13,8 +13,8 @@ class OverlayProtocolTest {
     @Test fun everyMessageRoundTrips() = listOf(
         Msg.Notice("Sleep in 30 min"),
         Msg.Notice(""),
-        Msg.Open(1_763_200_000_000L, 9_876_543_210L),
-        Msg.Open(null, 5L),
+        Msg.Open(1_763_200_000_000L),
+        Msg.Open(null),
         Msg.Close,
         Msg.Key(20, down = true, canceled = false),
         Msg.Key(23, down = false, canceled = true),

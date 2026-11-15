@@ -26,8 +26,8 @@ object OverlayProtocol {
 
     sealed interface Msg {
         data class Notice(val text: String) : Msg
-        /** Longs (wall-clock end, uptime) do not fit an Int arg, so they travel in the string. */
-        data class Open(val sleepEndMs: Long?, val openedAt: Long) : Msg
+        /** The wall-clock end does not fit an Int arg, so it travels in the string. */
+        data class Open(val sleepEndMs: Long?) : Msg
         object Close : Msg
         data class Key(val code: Int, val down: Boolean, val canceled: Boolean) : Msg
         data class Sleep(val endMs: Long?) : Msg
@@ -46,7 +46,7 @@ object OverlayProtocol {
 
     fun encode(m: Msg): Wire = when (m) {
         is Msg.Notice -> Wire(MSG_NOTICE, 0, 0, m.text)
-        is Msg.Open -> Wire(MSG_OPEN, 0, 0, "${m.sleepEndMs ?: ""}|${m.openedAt}")
+        is Msg.Open -> Wire(MSG_OPEN, 0, 0, m.sleepEndMs?.toString())
         Msg.Close -> Wire(MSG_CLOSE, 0, 0, null)
         is Msg.Key -> Wire(MSG_KEY, m.code, (if (m.down) 1 else 0) or (if (m.canceled) 2 else 0), null)
         is Msg.Sleep -> Wire(MSG_SLEEP, 0, 0, m.endMs?.toString())
@@ -60,7 +60,7 @@ object OverlayProtocol {
 
     fun decode(w: Wire): Msg? = when (w.what) {
         MSG_NOTICE -> w.str?.let { Msg.Notice(it) }
-        MSG_OPEN -> w.str?.split('|')?.takeIf { it.size == 2 }?.let { (end, at) -> at.toLongOrNull()?.let { Msg.Open(end.toLongOrNull(), it) } }
+        MSG_OPEN -> Msg.Open(w.str?.toLongOrNull())
         MSG_CLOSE -> Msg.Close
         MSG_KEY -> Msg.Key(w.arg1, w.arg2 and 1 != 0, w.arg2 and 2 != 0)
         MSG_SLEEP -> Msg.Sleep(w.str?.toLongOrNull())

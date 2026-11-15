@@ -42,7 +42,8 @@ class CpAccessibilityService : AccessibilityService() {
     private var remaps: List<Remap> = emptyList() // identity check only: reload when the store hands back a new list
     private val engine = RemapEngine(emptyList())
     private val runner: ActionRunner by lazy { ActionRunner(this, ::cycleSleepTimer) { overlay().togglePanel() } }
-    private val inProcess by lazy { InProcessOverlay(this, handler, { runner.run(it) }) { sleepEndMs } }
+    private val inProcessLazy = lazy { InProcessOverlay(this, handler, { runner.run(it) }) { sleepEndMs } }
+    private val inProcess by inProcessLazy
     private val remoteLazy = lazy { RemoteOverlay(this, handler, { runner.run(it) }, { sleepEndMs }, inProcess) }
     private val remote by remoteLazy
     /** The overlay last used; routeKey asks it whether the panel is open. */
@@ -115,7 +116,7 @@ class CpAccessibilityService : AccessibilityService() {
     private val screenRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             Log.i("CP", "${i.action?.substringAfterLast('.')} pid=${Process.myPid()} t=${SystemClock.elapsedRealtime()}")
-            if (i.action == Intent.ACTION_SCREEN_OFF) { current?.closePanel(); current?.dismissNotice(); if (remoteLazy.isInitialized()) remote.dismissNotice() } // a notice must not reappear on wake
+            if (i.action == Intent.ACTION_SCREEN_OFF) { current?.closePanel(); current?.dismissNotice(); if (remoteLazy.isInitialized()) remote.dismissNotice(); if (inProcessLazy.isInitialized()) inProcess.dismissNotice() } // a notice must not reappear on wake
             if (i.action == Intent.ACTION_SCREEN_OFF && sleepEndMs != null) { Log.i("CP", "sleep cleared (screen off)"); saveSleep(null) } // uptime pauses in sleep: a stale timer would fire after wake
             handler.removeCallbacks(wakeCheck) // screen off before settling: drop the pending check
             if (i.action == Intent.ACTION_SCREEN_ON) {
@@ -260,6 +261,7 @@ class CpAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(engineTimer)
         handler.removeCallbacks(sleepFire) // the saved file stays, so a reconnect re-arms it
         if (remoteLazy.isInitialized()) remote.release() // unbinds :ui
+        if (inProcessLazy.isInitialized()) inProcess.release()
         current?.release()
         current = null
         testHook.cancel()
