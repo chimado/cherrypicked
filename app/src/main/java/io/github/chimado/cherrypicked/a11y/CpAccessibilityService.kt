@@ -53,7 +53,7 @@ class CpAccessibilityService : AccessibilityService() {
         Log.i("CP", "test feed key=$code down=$down repeat=$repeat consume=${routeKey(code, down, repeat, false, downTime)}")
     }
 
-    /** Wall-clock end of the running sleep timer, or null. Read by the quick panel (same process). */
+    /** Wall-clock end of the running sleep timer, or null. Read by the in-process panel; sent to :ui in MSG_OPEN/MSG_SLEEP. */
     var sleepEndMs: Long? = null
         private set
     private val sleepFile by lazy { File(filesDir, "sleep_timer") }

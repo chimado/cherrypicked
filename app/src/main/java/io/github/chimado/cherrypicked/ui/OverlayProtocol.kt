@@ -19,6 +19,7 @@ object OverlayProtocol {
     const val MSG_RUN = 102
     const val MSG_IDLE = 103
     const val MSG_FAILED = 104
+    const val MSG_PANEL_FAILED = 105
 
     /** What crosses the process boundary: Message.what/arg1/arg2 plus one String in Message.data. */
     data class Wire(val what: Int, val arg1: Int, val arg2: Int, val str: String?)
@@ -32,12 +33,15 @@ object OverlayProtocol {
         data class Sleep(val endMs: Long?) : Msg
         /** Screen off: drop any notice so it never reappears on wake. */
         object Dismiss : Msg
-        object Closed : Msg
+        /** The panel closed; [seen] as in [Idle], so a Closed from before a newer Open is ignored. */
+        data class Closed(val seen: Int) : Msg
         data class Run(val action: Action) : Msg
         /** [seen] = messages :ui has received; :a11y unbinds only if it has sent no more since, so a notice in flight is never cut. */
         data class Idle(val seen: Int) : Msg
         /** :ui could not draw [text]; :a11y shows it itself and stays in-process. */
         data class Failed(val text: String) : Msg
+        /** :ui could not draw the panel; :a11y opens it itself and stays in-process. */
+        object PanelFailed : Msg
     }
 
     fun encode(m: Msg): Wire = when (m) {
@@ -47,10 +51,11 @@ object OverlayProtocol {
         is Msg.Key -> Wire(MSG_KEY, m.code, (if (m.down) 1 else 0) or (if (m.canceled) 2 else 0), null)
         is Msg.Sleep -> Wire(MSG_SLEEP, 0, 0, m.endMs?.toString())
         Msg.Dismiss -> Wire(MSG_DISMISS, 0, 0, null)
-        Msg.Closed -> Wire(MSG_CLOSED, 0, 0, null)
+        is Msg.Closed -> Wire(MSG_CLOSED, m.seen, 0, null)
         is Msg.Run -> Wire(MSG_RUN, 0, 0, m.action.encode())
         is Msg.Idle -> Wire(MSG_IDLE, m.seen, 0, null)
         is Msg.Failed -> Wire(MSG_FAILED, 0, 0, m.text)
+        Msg.PanelFailed -> Wire(MSG_PANEL_FAILED, 0, 0, null)
     }
 
     fun decode(w: Wire): Msg? = when (w.what) {
@@ -60,10 +65,11 @@ object OverlayProtocol {
         MSG_KEY -> Msg.Key(w.arg1, w.arg2 and 1 != 0, w.arg2 and 2 != 0)
         MSG_SLEEP -> Msg.Sleep(w.str?.toLongOrNull())
         MSG_DISMISS -> Msg.Dismiss
-        MSG_CLOSED -> Msg.Closed
+        MSG_CLOSED -> Msg.Closed(w.arg1)
         MSG_RUN -> w.str?.let(::decodeAction)?.let { Msg.Run(it) }
         MSG_IDLE -> Msg.Idle(w.arg1)
         MSG_FAILED -> w.str?.let { Msg.Failed(it) }
+        MSG_PANEL_FAILED -> Msg.PanelFailed
         else -> null
     }
 }

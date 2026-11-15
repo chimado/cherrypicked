@@ -9,9 +9,11 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Messenger
 import android.os.RemoteException
+import android.os.SystemClock
 import android.util.Log
 import android.view.WindowManager
 import io.github.chimado.cherrypicked.keys.Action
+import io.github.chimado.cherrypicked.panel.PANEL_KEYS
 import io.github.chimado.cherrypicked.panel.QuickPanel
 import io.github.chimado.cherrypicked.ui.OverlayProtocol
 import io.github.chimado.cherrypicked.ui.OverlayProtocol.Msg
@@ -34,7 +36,7 @@ interface Overlay {
 
 /** Phase 2's panel and notice, drawn by the accessibility service itself. The fallback when :ui cannot draw. */
 class InProcessOverlay(svc: AccessibilityService, handler: Handler, runner: (Action) -> Unit, sleepEnd: () -> Long?) : Overlay {
-    private val panel = QuickPanel(svc, runner, sleepEnd)
+    private val panel = QuickPanel(svc, handler, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, runner, sleepEnd)
     private val notice = Notice(svc, handler, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
 
     override fun showNotice(text: String) = notice.show(text)
@@ -50,14 +52,15 @@ class InProcessOverlay(svc: AccessibilityService, handler: Handler, runner: (Act
 
 /**
  * Draws in [OverlayService] (:ui), bound only while something shows: binds on first use, queues until connected,
- * unbinds when :ui reports idle, so :ui (and its memory) is gone between uses.
+ * unbinds when :ui reports idle, so :ui (and its memory) is gone between uses. Draws nothing in :a11y except
+ * through [local] after a failure (bind or draw), which the caller then keeps using until [reset].
  */
 class RemoteOverlay(
     private val ctx: Context,
     private val handler: Handler,
     private val runAction: (Action) -> Unit,
-    @Suppress("unused") private val sleepEnd: () -> Long?, // for MSG_OPEN in Task 2
-    private val local: Overlay, // ponytail: panel still drawn in :a11y; Task 2 moves it to :ui and drops this
+    private val sleepEnd: () -> Long?,
+    private val local: Overlay, // the in-process fallback, used only when :ui fails
 ) : Overlay {
     /** Why :ui can't be used ("bind failed" / "draw failed"), or null: the caller stays in-process until [reset]. */
     var failure: String? = null
@@ -65,6 +68,7 @@ class RemoteOverlay(
     private var bound = false
     private var remote: Messenger? = null
     private var sent = 0 // messages delivered to the current :ui instance, compared with Idle.seen
+    private var openSent = Int.MAX_VALUE // `sent` when the last Open was delivered; an older Closed is stale
     private val queue = ArrayList<Msg>()
     private val replies = Messenger(Handler(handler.looper) { onReply(it.toWire()); true })
 
@@ -92,20 +96,42 @@ class RemoteOverlay(
         queue.removeAll { it is Msg.Notice }
         if (remote != null) send(Msg.Dismiss) // else onServiceConnected finds the queue empty and unbinds
     }
-    override fun togglePanel() = local.togglePanel()
-    override fun closePanel() = local.closePanel()
-    override val panelOpen get() = local.panelOpen
-    override val panelOpenedAt get() = local.panelOpenedAt
-    override fun panelKey(code: Int, down: Boolean, canceled: Boolean) = local.panelKey(code, down, canceled)
-    override fun sleepChanged(endMs: Long?) = local.sleepChanged(endMs)
-    override fun release() { local.release(); unbind() }
+    /** Set the moment the panel is asked for (before :ui draws it) so routeKey sends the next keys to it; queued in order. */
+    override var panelOpen = false
+        private set
+    override var panelOpenedAt = 0L
+        private set
+
+    override fun togglePanel() {
+        if (panelOpen) return closePanel()
+        panelOpen = true
+        panelOpenedAt = SystemClock.uptimeMillis()
+        openSent = Int.MAX_VALUE
+        send(Msg.Open(sleepEnd(), panelOpenedAt))
+    }
+
+    override fun closePanel() {
+        if (!panelOpen) return // never bind just to close
+        panelOpen = false
+        send(Msg.Close)
+    }
+
+    override fun panelKey(code: Int, down: Boolean, canceled: Boolean): Boolean {
+        if (code !in PANEL_KEYS) return false
+        send(Msg.Key(code, down, canceled))
+        return true
+    }
+
+    override fun sleepChanged(endMs: Long?) { if (panelOpen) send(Msg.Sleep(endMs)) }
+    override fun release() = unbind()
 
     /** A new accessibility connection tries :ui again. */
     fun reset() { failure = null }
 
     private fun fail(why: String) { Log.w("CP", "overlay remote $why"); failure = why }
 
-    private fun rebind() { val q = queue.toList(); unbind(); q.forEach(::send) }
+    /** :ui died: any panel died with it, so keys go back to the engine; only notices are worth resending. */
+    private fun rebind() { val q = queue.filterIsInstance<Msg.Notice>(); unbind(); q.forEach(::send) }
 
     private fun send(m: Msg) {
         val r = remote
@@ -113,6 +139,7 @@ class RemoteOverlay(
         try {
             r.send(OverlayProtocol.encode(m).toMessage().apply { replyTo = replies })
             sent++
+            if (m is Msg.Open) openSent = sent
         } catch (e: RemoteException) { Log.w("CP", "overlay send failed", e); remote = null; queue += m } // reconnect delivers it
     }
 
@@ -127,11 +154,13 @@ class RemoteOverlay(
         val q = queue.toList()
         queue.clear()
         for (m in q) if (m is Msg.Notice) local.showNotice(m.text) // nothing is lost on the way to the fallback
+        if (panelOpen) panelFailed()
     }
 
     private fun unbind() {
         remote = null
         queue.clear()
+        panelOpen = false // :ui exits once unbound
         if (!bound) return
         bound = false
         try { ctx.unbindService(conn) } catch (_: IllegalArgumentException) {}
@@ -143,7 +172,15 @@ class RemoteOverlay(
             is Msg.Run -> runAction(m.action)
             is Msg.Idle -> if (m.seen == sent && queue.isEmpty()) unbind() // else a newer message is in flight
             is Msg.Failed -> { fail("draw failed"); local.showNotice(m.text) } // :ui's Idle follows and unbinds it
-            else -> {} // Msg.Closed: the panel is still in :a11y until Task 2
+            is Msg.Closed -> if (m.seen >= openSent) panelOpen = false
+            Msg.PanelFailed -> { fail("draw failed"); panelFailed() }
+            else -> {}
         }
+    }
+
+    /** Reopen the panel in-process: with [failure] set, the caller's QuickPanel action now picks [local]. */
+    private fun panelFailed() {
+        panelOpen = false
+        runAction(Action.QuickPanel)
     }
 }
