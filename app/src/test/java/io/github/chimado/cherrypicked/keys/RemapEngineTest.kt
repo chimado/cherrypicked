@@ -170,24 +170,80 @@ class RemapEngineTest {
         assertFalse(e.up(OK, 80).consume)
     }
 
-    @Test fun otherKeyWhileHeldStillConsumesHeldUp() {
+    @Test fun heldHomeInterruptedBefore500FiresHomeOnUp() {
         val e = RemapEngine(listOf(Remap(HOME, Press.LONG, Action.QuickPanel)))
         e.down(HOME, 0)
         val d = e.down(UP, 100)
         assertFalse(d.consume)
+        assertEquals(listOf(Effect.CancelSchedule), d.effects)
         assertEquals(emptyList<Effect>(), e.onTimer(500)) // Home no longer tracked
+        assertTrue(e.down(HOME, 550, repeat = 1).consume) // repeats of the abandoned key stay consumed
         e.up(UP, 150)
-        assertEquals(Decision(true, emptyList()), e.up(HOME, 600))
+        assertEquals(Decision(true, listOf(fire(Action.Home))), e.up(HOME, 600))
     }
 
-    @Test fun scheduleReplacesPrevious() {
-        // A second Schedule without CancelSchedule replaces the first: only the latest time counts.
+    @Test fun heldHomeInterruptedAfterLongFiresNothingMore() {
+        val e = RemapEngine(listOf(Remap(HOME, Press.LONG, Action.QuickPanel)))
+        e.down(HOME, 0)
+        assertEquals(listOf(fire(Action.QuickPanel)), e.onTimer(500))
+        assertFalse(e.down(UP, 600).consume)
+        assertEquals(Decision(true, emptyList()), e.up(HOME, 700))
+    }
+
+    @Test fun singleOnlyKeyInterruptedWhileHeldStillFiresOnUp() {
+        val e = RemapEngine(listOf(Remap(OK, Press.SINGLE, app)))
+        e.down(OK, 0)
+        e.down(UP, 50)
+        e.up(UP, 80)
+        assertEquals(Decision(true, listOf(fire(app))), e.up(OK, 100))
+    }
+
+    @Test fun interruptedKeyCanceledUpFiresNothing() {
+        val e = RemapEngine(listOf(Remap(OK, Press.SINGLE, app)))
+        e.down(OK, 0)
+        e.down(UP, 50)
+        assertEquals(Decision(true, emptyList()), e.up(OK, 100, canceled = true))
+    }
+
+    @Test fun heldSecondPressInterruptedFiresDoubleOnUp() {
+        val e = RemapEngine(listOf(Remap(OK, Press.SINGLE, app), Remap(OK, Press.DOUBLE, app2)))
+        e.down(OK, 0)
+        e.up(OK, 100)
+        e.down(OK, 200)
+        assertEquals(emptyList<Effect.Fire>(), fires(e.down(UP, 250).effects))
+        assertEquals(Decision(true, listOf(fire(app2))), e.up(OK, 300))
+    }
+
+    @Test fun lateSecondPressIsSingleThenNewPress() {
+        val e = RemapEngine(listOf(Remap(OK, Press.SINGLE, app), Remap(OK, Press.DOUBLE, app2)))
+        e.down(OK, 0)
+        e.up(OK, 100) // window ends at 400
+        // the timer hasn't run yet, but the window is over
+        assertEquals(Decision(true, listOf(Effect.CancelSchedule, fire(app))), e.down(OK, 400))
+        assertEquals(Decision(true, listOf(Effect.Schedule(450 + DOUBLE_PRESS_MS))), e.up(OK, 450))
+        assertEquals(listOf(fire(app)), e.onTimer(750))
+    }
+
+    @Test fun resetClearsAllState() {
+        val e = RemapEngine(listOf(Remap(OK, Press.SINGLE, app), Remap(OK, Press.DOUBLE, app2)))
+        e.down(OK, 0)
+        e.up(OK, 100)
+        e.reset()
+        assertEquals(emptyList<Effect>(), e.onTimer(400))
+        e.down(OK, 500)
+        e.down(UP, 550) // OK now awaits its up
+        e.reset()
+        assertEquals(Decision(false, emptyList()), e.up(OK, 600))
+    }
+
+    @Test fun cancelBeforeReplacingSchedule() {
+        // The engine never leaves two timers outstanding: it emits CancelSchedule before a replacing Schedule.
         val e = RemapEngine(listOf(Remap(OK, Press.SINGLE, app), Remap(OK, Press.DOUBLE, app2), Remap(OK, Press.LONG, Action.QuickPanel)))
         assertEquals(listOf(Effect.Schedule(500)), e.down(OK, 0).effects)
         assertEquals(listOf(Effect.CancelSchedule, Effect.Schedule(100 + DOUBLE_PRESS_MS)), e.up(OK, 100).effects)
         assertEquals(emptyList<Effect>(), e.onTimer(399))
         assertEquals(listOf(fire(app)), e.onTimer(400))
-        assertEquals(emptyList<Effect>(), e.onTimer(500)) // the old long time is dead
+        assertEquals(emptyList<Effect>(), e.onTimer(500)) // the canceled long time is dead
     }
 
     @Test fun onTimerWithNothingPendingIsEmpty() {
