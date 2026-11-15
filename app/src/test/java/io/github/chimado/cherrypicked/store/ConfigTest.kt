@@ -52,4 +52,20 @@ class ConfigTest {
 
     @Test fun duplicateKeyPressLastWins() = assertEquals(listOf(Remap(3, Press.LONG, Action.Back)), remaps(
         "[{\"key\":3,\"press\":\"LONG\",\"action\":\"home\"},{\"key\":3,\"press\":\"LONG\",\"action\":\"back\"}]"))
+
+    @Test fun appearanceRoundTrips() {
+        val c = Config(pattern = "Dots", accent = "Rust", base = "Linen")
+        assertEquals(c, Config.fromJson(c.toJson()))
+    }
+
+    @Test fun appearanceDefaultsWhenMissing() {
+        val c = Config.fromJson("{}")
+        assertEquals(listOf("Plain", "Cherry", "Graphite"), listOf(c.pattern, c.accent, c.base))
+    }
+
+    @Test fun appearanceUnknownNameKept() = assertEquals("Future", Config.fromJson("""{"pattern":"Future"}""").pattern)
+
+    @Test fun appearanceNonStringRefused() {
+        assertThrows(ConfigFormatException::class.java) { Config.fromJson("""{"accent":5}""") }
+    }
 }

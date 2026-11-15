@@ -1,5 +1,6 @@
 package io.github.chimado.cherrypicked.store
 
+import io.github.chimado.cherrypicked.palette
 import io.github.chimado.cherrypicked.setup.canRemap
 import io.github.chimado.cherrypicked.setup.hasWayHome
 
@@ -28,5 +29,6 @@ fun checkImport(text: String, installed: Set<String>, label: (String) -> String)
         "Open main app on start: " + if (c.autoOpen) "On" else "Off",
         "Hidden apps: ${c.hidden.size}",
         "Buttons: ${c.remaps.size}",
+        palette(c).let { "Appearance: ${it.pattern}, ${it.accentName}, ${it.baseName}" },
     ))
 }

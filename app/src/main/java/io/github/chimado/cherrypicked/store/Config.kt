@@ -23,6 +23,9 @@ data class Config(
     val declined: Set<String> = emptySet(),
     val hintShown: Boolean = false,
     val remaps: List<Remap> = DEFAULT_REMAPS,
+    val pattern: String = "Plain", // preset names; unknown ones resolve to the default in palette()
+    val accent: String = "Cherry",
+    val base: String = "Graphite",
 ) {
     companion object
 }
@@ -35,6 +38,9 @@ fun Config.toJson(): String = JSONObject().apply {
     put("autoOpen", autoOpen)
     put("declined", JSONArray(declined))
     put("hintShown", hintShown)
+    put("pattern", pattern)
+    put("accent", accent)
+    put("base", base)
     put("remaps", JSONArray().apply {
         remaps.forEach { put(JSONObject().put("key", it.keyCode).put("press", it.press.name).put("action", it.action.encode())) }
     })
@@ -47,6 +53,7 @@ fun Config.Companion.fromJson(s: String): Config = try {
     fun strings(k: String): List<String>? = if (!o.has(k)) null else o.getJSONArray(k).let { a ->
         List(a.length()) { i -> a.get(i) as? String ?: throw JSONException("$k[$i] not a string") }
     }
+    fun str(k: String, def: String): String = if (o.has(k)) o.get(k) as? String ?: throw JSONException("$k not a string") else def
     fun <T> opt(k: String, get: (String) -> T, def: T): T = if (o.has(k)) get(k) else def
     Config(
         version = opt("version", o::getInt, d.version),
@@ -66,6 +73,9 @@ fun Config.Companion.fromJson(s: String): Config = try {
                 Remap(key, press, action)
             }.associateBy { it.keyCode to it.press }.values.toList() // duplicate (key, press): last wins
         },
+        pattern = str("pattern", d.pattern),
+        accent = str("accent", d.accent),
+        base = str("base", d.base),
     )
 } catch (e: JSONException) {
     throw ConfigFormatException(e.message ?: "bad config")
