@@ -24,7 +24,8 @@
         android:label="Cherrypicked"
         android:icon="@drawable/icon"
         android:banner="@drawable/banner"
-        android:allowBackup="false">
+        android:allowBackup="false"
+        android:enableOnBackInvokedCallback="false">
         <activity
             android:name=".home.HomeActivity"
             android:exported="true"

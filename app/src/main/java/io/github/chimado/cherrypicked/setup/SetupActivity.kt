@@ -47,6 +47,7 @@ class SetupActivity : Activity() {
     private var vw = 0f
     private var sub: Sub? = null
     private var note: String? = null
+    private var started = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,7 +69,7 @@ class SetupActivity : Activity() {
     override fun onResume() {
         super.onResume()
         // Returning from a system settings screen: refresh the statuses.
-        if (::list.isInitialized && list.childCount > 0) render(null, keepFocus = true)
+        if (started) render(null, keepFocus = true) else started = true // first resume keeps the "section" focus
     }
 
     @Deprecated("Deprecated in Java")
