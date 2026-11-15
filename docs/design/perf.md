@@ -21,3 +21,16 @@
 - **Idle frames.** The one idle frame is most likely the once-a-minute clock update landing inside the 30 s window. That update is by design. This is not confirmed: the run didn't record a timestamp for the frame.
 - **Navigation is over budget.** Some focus-animation frames take two vsyncs: no frame runs over 34 ms, but at least 5% of them take 33 ms. The benchmark's simpler screen hit p95 16.7 ms. The likely cause is the `BlurMaskFilter` glow being redrawn on every animation frame across the larger tiles. It has not been profiled yet.
 - **`:a11y` memory** was measured separately, after re-enabling the service. The script's own `pss_a11y_kb` line came back empty, because reinstalling the APK removed the service from the enabled list (see `a11y-check.md`).
+
+## Re-check after the final-review fixes (main @ 5495544, 2026-11-15 03:15)
+
+| Measure | Result | Budget | |
+|---|---|---|---|
+| Home in background | 23.8 MB | ≤ 25 MB | ✅ |
+| `:a11y` | 5.4 MB | ≤ 15 MB | ✅ |
+| Return to Home (median) | **67 ms** | ≤ 100 ms | ✅ |
+| Cold start (median) | 479 ms | — | |
+| Idle (30 s, aligned to the minute) | 0 CPU, 0 frames | 0 | ✅ |
+| `dumpsys gfxinfo` while navigating (66 frames) | **p50 6 ms, p95 7 ms, 0 janky, 0 missed vsync** | ≤ 17 ms | ✅ |
+
+**The 33 ms "p95" that `measure.sh` still reports is a measurement artefact.** It comes from SurfaceFlinger frame *gaps* around each animation's start, which the shell-injected keys make worse. The app's own frame times are well under budget. Use `gfxinfo` for frame timing.

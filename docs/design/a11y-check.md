@@ -20,3 +20,19 @@
 ## After the session
 
 The TV was restored. The accessibility setting is back to exactly what was saved before the session (Projectivy + Button Mapper), `APP_AUTO_START` for Cherrypicked is back to `ignore`, Projectivy is in front, and the TV is asleep.
+
+## Re-check after the final-review fixes (2026-11-15 03:15)
+
+| Check | Result |
+|---|---|
+| Health check: service enabled but blocked by TCL auto-start | ✅ The Fix Home tile appears. |
+| Health check: service bound | ✅ The Fix Home tile disappears. |
+| Home on the physical remote, from inside Setup | ✅ Cherrypicked appears, and the `:setup` process exits. |
+| Setup focus after "Add favorite" | ✅ Returns to "Add favorite…". |
+| Main-app picker | ✅ Opens on the current main app; Back returns to the row that opened it. |
+| Wake from the home screen | ✅ Moonfin opens. |
+| Wake on HDMI (streamed log) | ✅ `SCREEN_ON` → `wake fg=com.tcl.tv open=null`. The earlier missing log was the TV's small logcat buffer rolling over. |
+| Service connected long after boot | ✅ `boot open=null (late bind)` |
+| Boot auto-open after a real reboot | ⏳ Not tested; it needs a reboot. |
+
+**Also seen:** TCL's standby kills background apps, including Cherrypicked's home process ("kill all background"). The next Home press is then a cold start (about 480 ms).
