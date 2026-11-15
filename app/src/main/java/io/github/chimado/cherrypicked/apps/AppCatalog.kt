@@ -70,6 +70,11 @@ class AppCatalog(private val ctx: Context) {
         }
     }
 
+    /** Bakes [art] into the same bitmap cache under [key]; [retain] drops it when the rebuild no longer uses it. */
+    fun cachedBitmap(key: String, w: Int, h: Int, art: () -> Drawable): Bitmap = bitmaps.getOrPut(key) {
+        Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { art().apply { setBounds(0, 0, w, h); draw(Canvas(it)) } }
+    }
+
     fun evict(pkg: String) { bitmaps.keys.removeAll { it.startsWith("$pkg@") } }
 
     /** Drops every cached bitmap not in [keys] (as built by [key]). */
@@ -122,4 +127,19 @@ private class CardDrawable(private val label: String, private val icon: Drawable
     override fun setColorFilter(cf: ColorFilter?) {}
     @Deprecated("Deprecated in Java")
     override fun getOpacity() = PixelFormat.TRANSLUCENT // rounded corners
+}
+
+/** A rounded-rect outline (a screen), drawn in [Theme.TEXT]; used on input tiles. */
+object InputIcon : Drawable() {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Theme.TEXT; style = Paint.Style.STROKE }
+    override fun draw(c: Canvas) {
+        val b = bounds
+        p.strokeWidth = b.width() * 0.07f
+        val r = RectF(b.left + p.strokeWidth, b.top + b.height() * 0.15f, b.right - p.strokeWidth, b.bottom - b.height() * 0.15f)
+        c.drawRoundRect(r, b.width() * 0.12f, b.width() * 0.12f, p)
+    }
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(cf: ColorFilter?) {}
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity() = PixelFormat.TRANSLUCENT
 }

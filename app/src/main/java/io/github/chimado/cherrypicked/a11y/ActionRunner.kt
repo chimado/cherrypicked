@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import io.github.chimado.cherrypicked.apps.AppCatalog
 import io.github.chimado.cherrypicked.home.HomeActivity
+import io.github.chimado.cherrypicked.inputs.InputCatalog
 import io.github.chimado.cherrypicked.keys.Action
 
 class ActionRunner(private val svc: AccessibilityService, private val cycleSleepTimer: () -> Unit, private val toggleQuickPanel: () -> Unit) {
@@ -14,8 +15,9 @@ class ActionRunner(private val svc: AccessibilityService, private val cycleSleep
             Action.Back -> global(AccessibilityService.GLOBAL_ACTION_BACK)
             is Action.OpenApp -> if (!AppCatalog(svc).launch(a.pkg)) Log.w("CP", "remap app missing ${a.pkg}")
             Action.ScreenOff -> global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
-            // ponytail: placeholder until Task 7 lands
-            is Action.OpenInput -> Log.i("CP", "inputs not ready ${a.inputId}")
+            is Action.OpenInput -> try {
+                svc.startActivity(InputCatalog(svc).launchIntent(a.inputId))
+            } catch (e: RuntimeException) { Log.w("CP", "input ${a.inputId} not opened", e) } // ActivityNotFound / Security
             Action.QuickPanel -> toggleQuickPanel()
             Action.SleepTimer -> cycleSleepTimer()
             Action.Nothing -> {}

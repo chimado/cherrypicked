@@ -25,7 +25,9 @@ import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
 import io.github.chimado.cherrypicked.a11y.tvInputPackages
 import io.github.chimado.cherrypicked.apps.AppCatalog
+import io.github.chimado.cherrypicked.apps.InputIcon
 import io.github.chimado.cherrypicked.health.HomeHealth
+import io.github.chimado.cherrypicked.inputs.InputCatalog
 import io.github.chimado.cherrypicked.rank.UsageLedger
 import io.github.chimado.cherrypicked.rank.foregroundLast14d
 import io.github.chimado.cherrypicked.store.Config
@@ -65,6 +67,7 @@ class HomeActivity : Activity() {
     private var shown: Pair<HomeRows, Suggestion?>? = null
     private var items: List<List<Item>> = emptyList()
     private var tier2Box: View? = null
+    private var inputs: List<TvInput>? = null // listed once per rebuild trigger; dropped by pkgRx
     private var apps: List<AppEntry>? = null // cached; dropped by pkgRx
     private var excluded: Set<String>? = null // other launchers + TV-input apps, never suggested; dropped by pkgRx
     private var fg: Map<String, Long> = emptyMap()
@@ -101,6 +104,7 @@ class HomeActivity : Activity() {
         override fun onReceive(c: Context, i: Intent) {
             i.data?.schemeSpecificPart?.let { catalog.evict(it) }
             apps = null
+            inputs = null
             excluded = null
             if (resumed) refresh(force = true) else stale = true
         }
@@ -200,6 +204,7 @@ class HomeActivity : Activity() {
     /** Reloads config, apps and scores; rebuilds the views only when what they show changed (or [force]). */
     private fun refresh(force: Boolean, reload: Boolean = true) {
         if (reload) config = store.load()
+        val inputs = inputs ?: InputCatalog(this).inputs().also { inputs = it }
         val apps = apps ?: catalog.apps().also { apps = it }
         val now = System.currentTimeMillis()
         // Usage stats can take tens of ms; ranking drifts slowly, so 10 min staleness is fine.
@@ -207,7 +212,7 @@ class HomeActivity : Activity() {
         val scores = ledger.scores(now, fg)
         val ex = excluded ?: (packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
             .map { it.activityInfo.packageName }.toSet() + tvInputPackages(this)).also { excluded = it }
-        val next = HomeModel.build(apps, config, scores, homeBroken = !HomeHealth.isEnabled(this)) to Suggester.next(apps, config, scores, ex)
+        val next = HomeModel.build(apps, config, scores, homeBroken = !HomeHealth.isEnabled(this), inputs = inputs) to Suggester.next(apps, config, scores, ex)
         if (force || next != shown) {
             shown = next
             build(next.first, next.second)
@@ -312,6 +317,11 @@ class HomeActivity : Activity() {
             used += catalog.key(t.app.pkg, tw, th, r)
             BitmapDrawable(resources, catalog.tileBitmap(t.app.pkg, tw, th, r))
         }
+        is Tile.Input -> {
+            val key = "input:${t.input.id}@${tw}x$th/$r"
+            used += key
+            BitmapDrawable(resources, catalog.cachedBitmap(key, tw, th) { catalog.card(t.input.label, InputIcon, r = r) })
+        }
         Tile.PickFavorites -> catalog.card("Pick favorites", r = r)
         Tile.AllApps -> catalog.card("Apps", r = r)
         Tile.Setup -> catalog.card("Setup", r = r)
@@ -321,6 +331,9 @@ class HomeActivity : Activity() {
     private fun act(t: Tile) {
         when (t) {
             is Tile.App -> if (catalog.launch(t.app.pkg)) ledger.recordLaunch(t.app.pkg, System.currentTimeMillis())
+            is Tile.Input -> try {
+                startActivity(InputCatalog(this).launchIntent(t.input.id))
+            } catch (e: RuntimeException) { Log.w(TAG, "input ${t.input.id} not opened", e) } // ActivityNotFound / Security
             Tile.AllApps -> open(ALL_APPS)
             Tile.Setup -> open(SETUP)
             Tile.PickFavorites -> open(SETUP, "favorites")

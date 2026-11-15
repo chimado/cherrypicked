@@ -15,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
 import io.github.chimado.cherrypicked.a11y.Fonts
+import io.github.chimado.cherrypicked.inputs.InputCatalog
 import io.github.chimado.cherrypicked.keys.Action
 import io.github.chimado.cherrypicked.setup.SetupActivity
 import io.github.chimado.cherrypicked.timer.SleepTimer
@@ -63,7 +64,7 @@ class QuickPanel(
         w = svc.resources.displayMetrics.widthPixels
         rows = buildList {
             add(Row("sleep", { sleepLabel(sleepEnd(), System.currentTimeMillis()) }) { run(Action.SleepTimer); refresh(sel) })
-            // Task 7: one Row per InputCatalog input goes here.
+            for (i in InputCatalog(svc).inputs()) add(Row("input:${i.id}", { i.label }) { close(); run(Action.OpenInput(i.id)) })
             add(Row("screen_off", { "Screen off" }) { close(); run(Action.ScreenOff) })
             add(Row("setup", { "Setup" }) {
                 svc.startActivity(Intent(svc, SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
