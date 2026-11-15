@@ -11,7 +11,6 @@ import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
 import android.util.TypedValue
-import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -29,12 +28,16 @@ private const val PKG = "io.github.chimado.cherrypicked"
 private const val DIM = 0x99E9EAEE.toInt()
 private const val FOCUS_BG = 0x33E0233F
 
-private class Row(val text: String, val onClick: (() -> Unit)? = null, val header: Boolean = false, val key: String? = null)
+/** [id]: a stable focus id for an actionable row, `#key` for a section header (the target of a "section" extra). */
+private class Row(val text: String, val id: String? = null, val onClick: (() -> Unit)? = null) {
+    val section get() = id?.startsWith("#") == true
+}
 
-private sealed interface Sub {
-    class FavActions(val pkg: String) : Sub
-    object PickFavorite : Sub
-    object PickMain : Sub
+/** A sub-screen; leaving it focuses [opener], or the first row of [section] when that row is gone. */
+private sealed class Sub(val opener: String, val section: String) {
+    class FavActions(val pkg: String) : Sub("fav:$pkg", "favorites")
+    object PickFavorite : Sub("add-fav", "favorites")
+    object PickMain : Sub("main", "autoopen")
 }
 
 /** Plain list setup screen in its own `:setup` process; every change is saved at once. */
@@ -48,6 +51,7 @@ class SetupActivity : Activity() {
     private var vw = 0f
     private var sub: Sub? = null
     private var note: String? = null
+    private var usageNote = false
     private var started = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,18 +68,20 @@ class SetupActivity : Activity() {
             addView(list)
         }
         setContentView(scroll)
-        render(intent.getStringExtra("section"))
+        render(null, intent.getStringExtra("section"))
     }
 
     override fun onResume() {
         super.onResume()
         // Returning from a system settings screen: refresh the statuses.
-        if (started) render(null, keepFocus = true) else started = true // first resume keeps the "section" focus
+        if (started) render(focusedId(), null) else started = true // first resume keeps the "section" focus
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (sub != null) { sub = null; render(null) } else finish()
+        val s = sub ?: return finish()
+        sub = null
+        render(s.opener, s.section)
     }
 
     override fun finish() {
@@ -92,49 +98,48 @@ class SetupActivity : Activity() {
 
     private fun rows(): List<Row> = when (val s = sub) {
         is Sub.FavActions -> listOf(
-            Row(label(s.pkg), header = true),
-            Row("Move up", { edit { it.moveFavorite(s.pkg, -1) } }),
-            Row("Move down", { edit { it.moveFavorite(s.pkg, 1) } }),
-            Row("Remove", { edit { it.removeFavorite(s.pkg) }; sub = null }),
+            Row(label(s.pkg)),
+            Row("Move up", "up") { edit { it.moveFavorite(s.pkg, -1) } },
+            Row("Move down", "down") { edit { it.moveFavorite(s.pkg, 1) } },
+            Row("Remove", "remove") { edit { it.removeFavorite(s.pkg) }; sub = null },
         )
-        Sub.PickFavorite -> listOf(Row("Add favorite", header = true)) +
-            apps.filter { it.pkg !in config.favorites }.map { a ->
-                Row(a.label, { edit { it.addFavorite(a.pkg) }; sub = null })
+        Sub.PickFavorite -> listOf(Row("Add favorite")) +
+            apps.filter { it.pkg !in config.favorites && it.pkg !in config.hidden }.map { a ->
+                Row(a.label, "pick:${a.pkg}") { edit { it.addFavorite(a.pkg) }; sub = null }
             }
-        Sub.PickMain -> listOf(Row("Main app", header = true)) +
-            apps.map { a -> Row(a.label, { edit { it.setMainApp(a.pkg) }; sub = null }) }
+        Sub.PickMain -> listOf(Row("Main app")) +
+            apps.map { a -> Row(a.label, "pick:${a.pkg}") { edit { it.setMainApp(a.pkg) }; sub = null } }
         null -> mainRows()
     }
 
     private fun mainRows(): List<Row> = buildList {
-        note?.let { add(Row(it, header = true)) }
-        add(Row("Favorites", header = true, key = "favorites"))
-        config.favorites.forEach { p -> add(Row(label(p), { sub = Sub.FavActions(p) })) }
-        add(if (config.favorites.size >= HomeModel.MAX_FAVORITES) Row("Add favorite... (5 of 5)", header = true)
-            else Row("Add favorite...", { sub = Sub.PickFavorite }))
+        note?.let { add(Row(it)) }
+        add(Row("Favorites", "#favorites"))
+        config.favorites.forEach { p -> add(Row(label(p), "fav:$p") { sub = Sub.FavActions(p) }) }
+        add(if (config.favorites.size >= HomeModel.MAX_FAVORITES) Row("Add favorite... (5 of 5)")
+            else Row("Add favorite...", "add-fav") { sub = Sub.PickFavorite })
 
-        add(Row("Auto-open", header = true, key = "autoopen"))
-        add(if (config.mainApp == null) Row("Open main app on start: set a main app first", header = true)
-            else Row("Open main app on start: " + if (config.autoOpen) "On" else "Off", { edit { it.toggleAutoOpen() } }))
-        add(Row("Main app: " + (config.mainApp?.let(::label) ?: "none"), { sub = Sub.PickMain }))
+        add(Row("Auto-open", "#autoopen"))
+        add(if (config.mainApp == null) Row("Open main app on start: set a main app first")
+            else Row("Open main app on start: " + if (config.autoOpen) "On" else "Off", "autoopen") { edit { it.toggleAutoOpen() } })
+        add(Row("Main app: " + (config.mainApp?.let(::label) ?: "none"), "main") { sub = Sub.PickMain })
 
-        add(Row("Hidden apps", header = true, key = "hidden"))
-        apps.forEach { a -> add(Row((if (a.pkg in config.hidden) "✓  " else "     ") + a.label, { edit { it.toggleHidden(a.pkg) } })) }
+        add(Row("Hidden apps", "#hidden"))
+        apps.forEach { a -> add(Row((if (a.pkg in config.hidden) "✓  " else "     ") + a.label, "hide:${a.pkg}") { edit { it.toggleHidden(a.pkg) } }) }
 
-        add(Row("Home button", header = true, key = "home"))
-        if (HomeHealth.isEnabled(this@SetupActivity)) add(Row("Connected", header = true)) else {
-            add(Row("Not connected", header = true))
-            add(Row("1. Settings > Accessibility > Cherrypicked > On", header = true))
-            add(Row("2. If that is greyed out, run from a computer: adb shell settings put secure enabled_accessibility_services <current list>:$PKG/.a11y.CpAccessibilityService", header = true))
+        add(Row("Home button", "#home"))
+        if (HomeHealth.isEnabled(this@SetupActivity)) add(Row("Connected")) else {
+            add(Row("Not connected"))
+            add(Row("1. Settings > Accessibility > Cherrypicked > On"))
+            add(Row("2. If that is greyed out, run from a computer: adb shell settings put secure enabled_accessibility_services <current list>:$PKG/.a11y.CpAccessibilityService"))
         }
-        add(Row("Open accessibility settings", { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) }))
+        add(Row("Open accessibility settings", "a11y") { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) })
 
-        add(Row("Usage access", header = true, key = "usage"))
-        add(Row(if (usageAllowed()) "Allowed" else "Not allowed", header = true))
-        add(Row("Lets Cherrypicked rank apps by how much you watch them, not only by launches from Cherrypicked.", header = true))
-        add(Row("Open usage access settings", {
-            if (!open(Settings.ACTION_USAGE_ACCESS_SETTINGS)) note = "adb shell appops set $PKG GET_USAGE_STATS allow"
-        }))
+        add(Row("Usage access", "#usage"))
+        add(Row(if (usageAllowed()) "Allowed" else "Not allowed"))
+        add(Row("Lets Cherrypicked rank apps by how much you watch them, not only by launches from Cherrypicked."))
+        add(Row("Open usage access settings", "usage") { usageNote = !open(Settings.ACTION_USAGE_ACCESS_SETTINGS) })
+        if (usageNote) add(Row("No settings screen for this here. From a computer run: adb shell appops set $PKG GET_USAGE_STATS allow"))
     }
 
     @Suppress("DEPRECATION")
@@ -145,31 +150,40 @@ class SetupActivity : Activity() {
         startActivity(Intent(action)); true
     } catch (_: ActivityNotFoundException) { false }
 
-    private fun render(section: String?, keepFocus: Boolean = false) {
-        val oldIdx = if (keepFocus) list.indexOfChild(currentFocus) else -1
-        list.removeAllViews()
-        var target: View? = null
-        var pendingSection = false
-        for (r in rows()) {
-            val v = row(r) { r.onClick?.invoke(); render(null, keepFocus = true) }
-            list.addView(v)
-            if (r.key != null) pendingSection = r.key == section
-            else if (pendingSection && r.onClick != null && target == null) target = v
+    private fun focusedId() = currentFocus?.tag as? String
+
+    /** Runs a row's action, then re-renders with focus on the same row, the new sub-screen's first row, or the opener. */
+    private fun click(r: Row) {
+        val before = sub
+        val id = focusedId()
+        r.onClick?.invoke()
+        val now = sub
+        when {
+            now === before -> render(id, null)
+            now == null -> render(before!!.opener, before.section)
+            else -> render(if (now is Sub.PickMain) config.mainApp?.let { "pick:$it" } else null, null)
         }
-        if (target == null && oldIdx >= 0) target = list.getChildAt(oldIdx.coerceAtMost(list.childCount - 1))
-        if (target == null || !target.isFocusable) target = (0 until list.childCount).map(list::getChildAt).firstOrNull { it.isFocusable }
-        target?.post { target.requestFocus(); target.requestRectangleOnScreen(android.graphics.Rect(0, 0, target.width, target.height)) }
     }
 
-    private fun row(r: Row, click: () -> Unit) = TextView(this).apply {
+    private fun render(focusId: String?, section: String?) {
+        list.removeAllViews()
+        val rows = rows()
+        rows.forEach { list.addView(row(it)) }
+        val i = focusTarget(rows.map { if (it.onClick != null || it.section) it.id else null }, focusId, section)
+        val target = list.getChildAt(i) ?: return
+        target.post { target.requestFocus(); target.requestRectangleOnScreen(android.graphics.Rect(0, 0, target.width, target.height)) }
+    }
+
+    private fun row(r: Row) = TextView(this).apply {
         text = r.text
         typeface = regular
-        setTextSize(TypedValue.COMPLEX_UNIT_PX, vw * if (r.header && r.key != null) 1.4f else 1.7f)
-        setTextColor(if (r.key != null) Theme.ACCENT else if (r.header) DIM else Theme.TEXT)
-        setPadding((1.5 * vw).toInt(), (if (r.key != null) 2.2 * vw else 0.9 * vw).toInt(), (1.5 * vw).toInt(), (0.9 * vw).toInt())
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, vw * if (r.section) 1.4f else 1.7f)
+        setTextColor(if (r.section) Theme.ACCENT else if (r.onClick == null) DIM else Theme.TEXT)
+        setPadding((1.5 * vw).toInt(), (if (r.section) 2.2 * vw else 0.9 * vw).toInt(), (1.5 * vw).toInt(), (0.9 * vw).toInt())
         if (r.onClick != null) {
+            tag = r.id
             isFocusable = true
-            setOnClickListener { click() }
+            setOnClickListener { click(r) }
             setOnFocusChangeListener { v, f ->
                 v.background = if (f) GradientDrawable().apply { setColor(FOCUS_BG); setStroke(0, 0) } else ColorDrawable(0)
                 (v as TextView).setTextColor(if (f) Theme.ACCENT else Theme.TEXT)

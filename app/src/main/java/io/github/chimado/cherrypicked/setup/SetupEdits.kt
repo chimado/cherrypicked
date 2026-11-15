@@ -21,3 +21,14 @@ fun Config.toggleHidden(pkg: String) = copy(hidden = if (pkg in hidden) hidden -
 fun Config.setMainApp(pkg: String) = copy(mainApp = pkg, autoOpen = true)
 
 fun Config.toggleAutoOpen() = if (mainApp == null) this else copy(autoOpen = !autoOpen)
+
+/**
+ * Index of the row to focus: [prevId] if it is still shown, else the first focusable row from [section]'s header on,
+ * else the first focusable row; -1 if none. [ids] holds a focusable row's id, `#key` for a section header, null otherwise.
+ */
+fun focusTarget(ids: List<String?>, prevId: String?, section: String?): Int {
+    fun ok(i: Int) = ids[i]?.startsWith("#") == false
+    if (prevId != null) ids.indexOf(prevId).takeIf { it >= 0 && ok(it) }?.let { return it }
+    val from = section?.let { ids.indexOf("#$it") }?.coerceAtLeast(0) ?: 0
+    return (from until ids.size).firstOrNull(::ok) ?: ids.indices.firstOrNull(::ok) ?: -1
+}
