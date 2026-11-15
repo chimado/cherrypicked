@@ -1,10 +1,17 @@
 package io.github.chimado.cherrypicked.store
 
+import io.github.chimado.cherrypicked.keys.Action
+import io.github.chimado.cherrypicked.keys.Press
+import io.github.chimado.cherrypicked.keys.Remap
+import io.github.chimado.cherrypicked.keys.decodeAction
+import io.github.chimado.cherrypicked.keys.encode
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
 class ConfigFormatException(msg: String) : Exception(msg)
+
+val DEFAULT_REMAPS = listOf(Remap(3, Press.LONG, Action.QuickPanel))
 
 /** Entries are package names; [declined] holds "fav:<pkg>" and "main:<pkg>" keys. */
 data class Config(
@@ -15,6 +22,7 @@ data class Config(
     val autoOpen: Boolean = false,
     val declined: Set<String> = emptySet(),
     val hintShown: Boolean = false,
+    val remaps: List<Remap> = DEFAULT_REMAPS,
 ) {
     companion object
 }
@@ -27,6 +35,9 @@ fun Config.toJson(): String = JSONObject().apply {
     put("autoOpen", autoOpen)
     put("declined", JSONArray(declined))
     put("hintShown", hintShown)
+    put("remaps", JSONArray().apply {
+        remaps.forEach { put(JSONObject().put("key", it.keyCode).put("press", it.press.name).put("action", it.action.encode())) }
+    })
 }.toString()
 
 fun Config.Companion.fromJson(s: String): Config = try {
@@ -45,6 +56,16 @@ fun Config.Companion.fromJson(s: String): Config = try {
         autoOpen = opt("autoOpen", o::getBoolean, d.autoOpen),
         declined = strings("declined")?.toSet() ?: d.declined,
         hintShown = opt("hintShown", o::getBoolean, d.hintShown),
+        // Lenient per entry (forward compat): unknown action/press entries are skipped.
+        remaps = if (!o.has("remaps")) d.remaps else o.getJSONArray("remaps").let { a ->
+            (0 until a.length()).mapNotNull { i ->
+                val e = a.optJSONObject(i) ?: return@mapNotNull null
+                val press = runCatching { Press.valueOf(e.optString("press")) }.getOrNull() ?: return@mapNotNull null
+                val action = decodeAction(e.optString("action")) ?: return@mapNotNull null
+                val key = (e.opt("key") as? Number)?.toInt() ?: return@mapNotNull null
+                Remap(key, press, action)
+            }.associateBy { it.keyCode to it.press }.values.toList() // duplicate (key, press): last wins
+        },
     )
 } catch (e: JSONException) {
     throw ConfigFormatException(e.message ?: "bad config")

@@ -34,3 +34,20 @@
 | `dumpsys gfxinfo` while navigating (66 frames) | **p50 6 ms, p95 7 ms, 0 janky, 0 missed vsync** | ≤ 17 ms | ✅ |
 
 **The 33 ms "p95" that `measure.sh` still reports is a measurement artefact.** It comes from SurfaceFlinger frame *gaps* around each animation's start, which the shell-injected keys make worse. The app's own frame times are well under budget. Use `gfxinfo` for frame timing.
+
+## Phase 2 (buttons, quick panel, sleep timer, inputs), 2026-11-15 04:25
+
+| Measure | Result | Budget | |
+|---|---|---|---|
+| Home process in background | 24.5 MB | ≤ 25 MB | ✅ (tight) |
+| `:a11y` before any overlay | 5.5 MB | — | |
+| `:a11y` after the quick panel or a notice has been shown | 18.1 MB | ≤ 22 MB (revised, see below) | ✅ |
+| Everything resident | 42.6 MB | ≤ 45 MB | ✅ |
+| `gfxinfo` while navigating (48 frames) | p95 6 ms, p99 7 ms, 0 janky | ≤ 17 ms | ✅ |
+| Return to Home (median) | 79 ms | ≤ 100 ms | ✅ |
+| Idle (30 s) | 0 CPU, 0 frames | 0 | ✅ |
+| APK | 537 KB | — | |
+
+**Why `:a11y` grows:** the first overlay window drawn in `:a11y` (the quick panel or a notice) loads Android's view and graphics stack into that process: about +3 MB native, +6 MB Java heap and +3 MB of libraries. It stays loaded, and trim-memory doesn't release it. Sharing one font brought it down from 20 to 18 MB.
+
+**The alternative:** run the panel and notices in a separate on-demand process. That needs the "display over other apps" permission, which is one more setup step, so it's the owner's call.

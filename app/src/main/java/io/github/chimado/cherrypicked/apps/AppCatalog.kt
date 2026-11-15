@@ -70,6 +70,11 @@ class AppCatalog(private val ctx: Context) {
         }
     }
 
+    /** Bakes [art] into the same bitmap cache under [key]; [retain] drops it when the rebuild no longer uses it. */
+    fun cachedBitmap(key: String, w: Int, h: Int, art: () -> Drawable): Bitmap = bitmaps.getOrPut(key) {
+        Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { art().apply { setBounds(0, 0, w, h); draw(Canvas(it)) } }
+    }
+
     fun evict(pkg: String) { bitmaps.keys.removeAll { it.startsWith("$pkg@") } }
 
     /** Drops every cached bitmap not in [keys] (as built by [key]). */
@@ -80,16 +85,19 @@ class AppCatalog(private val ctx: Context) {
     /** Fallback/synthetic tile art: [icon] centred on a #2a2b30 card with corner radius [r] and [label] underneath (or just the label). */
     fun card(label: String, icon: Drawable? = null, r: Float = 0f): Drawable = CardDrawable(label, icon, font, r)
 
-    fun launch(pkg: String): Boolean {
-        val i = intentFor(pkg) ?: return false
-        return try {
-            ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            true
-        } catch (_: ActivityNotFoundException) {
-            false
-        } catch (_: SecurityException) {
-            false
-        }
+    fun launch(pkg: String): Boolean = tryLaunch(intentFor(pkg)) { ctx.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+/** Starts [intent] if there is one. No intent (app gone) or a refused start: false, and nothing else happens. */
+internal fun <T : Any> tryLaunch(intent: T?, start: (T) -> Unit): Boolean {
+    val i = intent ?: return false
+    return try {
+        start(i)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    } catch (_: SecurityException) {
+        false
     }
 }
 
@@ -122,4 +130,19 @@ private class CardDrawable(private val label: String, private val icon: Drawable
     override fun setColorFilter(cf: ColorFilter?) {}
     @Deprecated("Deprecated in Java")
     override fun getOpacity() = PixelFormat.TRANSLUCENT // rounded corners
+}
+
+/** A rounded-rect outline (a screen), drawn in [Theme.TEXT]; used on input tiles. */
+object InputIcon : Drawable() {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Theme.TEXT; style = Paint.Style.STROKE }
+    override fun draw(c: Canvas) {
+        val b = bounds
+        p.strokeWidth = b.width() * 0.07f
+        val r = RectF(b.left + p.strokeWidth, b.top + b.height() * 0.15f, b.right - p.strokeWidth, b.bottom - b.height() * 0.15f)
+        c.drawRoundRect(r, b.width() * 0.12f, b.width() * 0.12f, p)
+    }
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(cf: ColorFilter?) {}
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity() = PixelFormat.TRANSLUCENT
 }

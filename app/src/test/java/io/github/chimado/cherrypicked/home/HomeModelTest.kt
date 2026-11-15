@@ -60,4 +60,21 @@ class HomeModelTest {
         val r = HomeModel.build(listOf(app("a")), cfg(), emptyMap(), true)
         assertEquals(listOf(Tile.App(app("a")), Tile.FixHome, Tile.AllApps, Tile.Setup), r.tier2)
     }
+
+    private val hdmi = TvInput("tv/HW3", "HDMI 1")
+
+    @Test fun inputFavoriteBecomesInputTile() {
+        val r = HomeModel.build(listOf(app("a")), cfg(listOf("input:tv/HW3", "a")), emptyMap(), false, listOf(hdmi))
+        assertEquals(listOf(Tile.Input(hdmi), Tile.App(app("a"))), r.favorites)
+    }
+
+    @Test fun missingInputFavoriteSkipped() {
+        val r = HomeModel.build(listOf(app("a")), cfg(listOf("input:gone", "a")), emptyMap(), false, listOf(hdmi))
+        assertEquals(listOf("a"), pkgs(r.favorites))
+    }
+
+    @Test fun inputsNeverInTier2() {
+        val r = HomeModel.build(listOf(app("a")), cfg(), emptyMap(), false, listOf(hdmi))
+        assertEquals(false, r.tier2.any { it is Tile.Input })
+    }
 }

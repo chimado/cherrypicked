@@ -1,7 +1,13 @@
 package io.github.chimado.cherrypicked.setup
 
+import android.view.KeyEvent
 import io.github.chimado.cherrypicked.home.HomeModel
+import io.github.chimado.cherrypicked.keys.Action
+import io.github.chimado.cherrypicked.keys.NAV_KEYS
+import io.github.chimado.cherrypicked.keys.Press
+import io.github.chimado.cherrypicked.keys.Remap
 import io.github.chimado.cherrypicked.store.Config
+import io.github.chimado.cherrypicked.store.DEFAULT_REMAPS
 
 /** Pure config edits for Setup; each returns the same config when the edit is refused. */
 fun Config.moveFavorite(pkg: String, delta: Int): Config {
@@ -32,3 +38,36 @@ fun focusTarget(ids: List<String?>, prevId: String?, section: String?): Int {
     val from = section?.let { ids.indexOf("#$it") }?.coerceAtLeast(0) ?: 0
     return (from until ids.size).firstOrNull(::ok) ?: ids.indices.firstOrNull(::ok) ?: -1
 }
+
+/** Replaces the remap with the same key and press; refuses an empty app/input id, which would not survive a save. */
+fun Config.putRemap(r: Remap): Config {
+    val a = r.action
+    if ((a is Action.OpenApp && a.pkg.isEmpty()) || (a is Action.OpenInput && a.inputId.isEmpty())) return this
+    if (!canRemap(r.keyCode, r.press, remaps)) return this
+    return keepingWayHome(remaps.filterNot { it.keyCode == r.keyCode && it.press == r.press } + r)
+}
+
+/** Removing a key's single also drops its double/long when those can't stand alone (they would swallow single presses). */
+fun Config.removeRemap(keyCode: Int, press: Press): Config {
+    val left = remaps.filterNot { it.keyCode == keyCode && it.press == press }
+    return keepingWayHome(left.filter { it.keyCode != keyCode || canRemap(it.keyCode, it.press, left) })
+}
+
+/** Some press still opens Cherrypicked or the panel: the implicit Home single, or a Home/QuickPanel remap. */
+fun hasWayHome(remaps: List<Remap>) = remaps.none { it.keyCode == KeyEvent.KEYCODE_HOME && it.press == Press.SINGLE } ||
+    remaps.any { it.action == Action.Home || it.action == Action.QuickPanel }
+
+private fun Config.keepingWayHome(r: List<Remap>) = if (hasWayHome(r)) copy(remaps = r) else this
+
+/** OK and the D-pad: remapping their single press would lock the owner out of every screen, Setup included. */
+fun isNavKey(keyCode: Int) = keyCode in NAV_KEYS
+
+/**
+ * A consumed key can't be re-injected, so double/long needs a single remap unless the single press is reproducible (Home, Back).
+ * Nav keys can't have a single remap, so they can't have any.
+ */
+fun canRemap(keyCode: Int, press: Press, existing: List<Remap>): Boolean = !isNavKey(keyCode) && (
+    press == Press.SINGLE || keyCode == KeyEvent.KEYCODE_HOME || keyCode == KeyEvent.KEYCODE_BACK ||
+        existing.any { it.keyCode == keyCode && it.press == Press.SINGLE })
+
+fun Config.resetRemaps() = copy(remaps = DEFAULT_REMAPS)
