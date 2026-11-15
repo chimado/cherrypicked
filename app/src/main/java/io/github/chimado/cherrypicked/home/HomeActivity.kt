@@ -1,8 +1,6 @@
 package io.github.chimado.cherrypicked.home
 
 import android.app.Activity
-import android.app.AppOpsManager
-import android.app.usage.UsageStatsManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -15,7 +13,6 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.Process
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -28,6 +25,7 @@ import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
 import io.github.chimado.cherrypicked.apps.AppCatalog
 import io.github.chimado.cherrypicked.rank.UsageLedger
+import io.github.chimado.cherrypicked.rank.foregroundLast14d
 import io.github.chimado.cherrypicked.store.Config
 import io.github.chimado.cherrypicked.store.ConfigStore
 import java.io.File
@@ -41,7 +39,6 @@ import kotlin.math.min
 
 private const val TAG = "Cherrypicked"
 private const val DIM = 0x99E9EAEE.toInt()
-private const val DAY_MS = 24L * 3600 * 1000
 // Started by name: these activities land in Tasks 7 and 8; until then opening them is a no-op.
 private const val ALL_APPS = "io.github.chimado.cherrypicked.home.AllAppsActivity"
 private const val SETUP = "io.github.chimado.cherrypicked.setup.SetupActivity"
@@ -201,7 +198,7 @@ class HomeActivity : Activity() {
         val apps = apps ?: catalog.apps().also { apps = it }
         val now = System.currentTimeMillis()
         // Usage stats can take tens of ms; ranking drifts slowly, so 10 min staleness is fine.
-        if (now - fgAt > 10 * 60_000L) { fg = foreground(); fgAt = now }
+        if (now - fgAt > 10 * 60_000L) { fg = foregroundLast14d(this); fgAt = now }
         val scores = ledger.scores(now, fg)
         // TODO(Task 10): homeBroken = !HomeHealth.isEnabled(this)
         val next = HomeModel.build(apps, config, scores, homeBroken = false) to Suggester.next(apps, config, scores)
@@ -214,18 +211,6 @@ class HomeActivity : Activity() {
             hint.visibility = View.VISIBLE
             handler.postDelayed(hideHint, 8_000)
         }
-    }
-
-    /** Foreground time per package over 14 days, only if the user granted usage access; never prompts. */
-    @Suppress("DEPRECATION") // unsafeCheckOpNoThrow: the plan's choice; still works on API 36
-    private fun foreground(): Map<String, Long> {
-        val ops = getSystemService(AppOpsManager::class.java)
-        if (ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName) != AppOpsManager.MODE_ALLOWED)
-            return emptyMap()
-        val now = System.currentTimeMillis()
-        return getSystemService(UsageStatsManager::class.java)
-            .queryAndAggregateUsageStats(now - 14 * DAY_MS, now)
-            .mapValues { it.value.totalTimeInForeground }
     }
 
     private fun save(c: Config) {

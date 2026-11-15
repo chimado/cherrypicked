@@ -19,6 +19,7 @@ import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
 import io.github.chimado.cherrypicked.apps.AppCatalog
 import io.github.chimado.cherrypicked.rank.UsageLedger
+import io.github.chimado.cherrypicked.rank.foregroundLast14d
 import io.github.chimado.cherrypicked.store.ConfigStore
 import java.io.File
 import kotlin.math.max
@@ -40,6 +41,7 @@ class AllAppsActivity : Activity() {
     private var vw = 0f
     private var byUse = true
     private var apps: List<AppEntry> = emptyList()
+    private var fg: Map<String, Long> = emptyMap()
     private var rows: List<List<AppEntry>> = emptyList()
     private var rowViews: List<View> = emptyList()
     private var tiles: List<List<Pair<TileView, TextView>>> = emptyList()
@@ -80,12 +82,13 @@ class AllAppsActivity : Activity() {
             systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         apps = catalog.apps()
+        fg = foregroundLast14d(this)
         build()
     }
 
     private fun build() {
         toggle.text = if (byUse) "Most used" else "A–Z"
-        val sorted = if (byUse) HomeModel.rankAll(apps, config, ledger.scores(System.currentTimeMillis(), emptyMap()))
+        val sorted = if (byUse) HomeModel.rankAll(apps, config, ledger.scores(System.currentTimeMillis(), fg))
         else apps.filter { it.pkg !in config.hidden }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
         rows = sorted.chunked(COLS)
 
@@ -130,6 +133,11 @@ class AllAppsActivity : Activity() {
         focus = FocusModel(sizes, cx)
         show(0, 0, true)
         scroll.scrollTo(0, 0)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        catalog.retain(emptySet()) // release tile bitmaps with the activity
     }
 
     private fun show(r: Int, c: Int, on: Boolean) {
