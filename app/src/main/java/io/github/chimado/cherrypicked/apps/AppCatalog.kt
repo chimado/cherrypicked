@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.Paint
@@ -46,6 +47,24 @@ class AppCatalog(private val ctx: Context) {
         }
         return card(label, icon)
     }
+
+    private val bitmaps = HashMap<String, Bitmap>()
+
+    /**
+     * [tileArt] rasterised once at tile pixel size and cached, so full-density banners are never kept
+     * and a rebuild decodes nothing. Call [evict] when the package changes and [retain] after a rebuild.
+     */
+    fun tileBitmap(pkg: String, w: Int, h: Int): Bitmap = bitmaps.getOrPut(key(pkg, w, h)) {
+        val d = tileArt(pkg)
+        Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { d.setBounds(0, 0, w, h); d.draw(Canvas(it)) }
+    }
+
+    fun evict(pkg: String) { bitmaps.keys.removeAll { it.startsWith("$pkg@") } }
+
+    /** Drops every cached bitmap not in [keys] (as built by [key]). */
+    fun retain(keys: Set<String>) { bitmaps.keys.retainAll(keys) }
+
+    fun key(pkg: String, w: Int, h: Int) = "$pkg@${w}x$h"
 
     /** Fallback/synthetic tile art: [icon] centred on a #2a2b30 card with [label] underneath (or just the label). */
     fun card(label: String, icon: Drawable? = null): Drawable = CardDrawable(label, icon, font)

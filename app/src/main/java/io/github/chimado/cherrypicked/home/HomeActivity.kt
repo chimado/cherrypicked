@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -63,9 +64,12 @@ class HomeActivity : Activity() {
     private var config = Config()
     private var shown: Pair<HomeRows, Suggestion?>? = null
     private var items: List<List<Item>> = emptyList()
-    private var boxes: List<View?> = emptyList() // per row: the container that scrolls / fades
-    private var centers: List<List<Float>> = emptyList()
-    private var minTx: List<Float> = emptyList() // per row: how far an overflowing row may scroll left
+    private var tier2Box: View? = null
+    private var apps: List<AppEntry>? = null // cached; dropped by pkgRx
+    private var fg: Map<String, Long> = emptyMap()
+    private var fgAt = Long.MIN_VALUE / 2
+    private var resumed = false
+    private var stale = false // a package changed while paused: rebuild on resume even if the rows look the same
     private var focus = FocusModel(listOf(1), listOf(listOf(0f)))
     private var hintPending = false
 
@@ -93,7 +97,11 @@ class HomeActivity : Activity() {
         override fun onReceive(c: Context, i: Intent) = tick.run()
     }
     private val pkgRx = object : BroadcastReceiver() {
-        override fun onReceive(c: Context, i: Intent) = refresh(force = true)
+        override fun onReceive(c: Context, i: Intent) {
+            i.data?.schemeSpecificPart?.let { catalog.evict(it) }
+            apps = null
+            if (resumed) refresh(force = true) else stale = true
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -128,6 +136,13 @@ class HomeActivity : Activity() {
         root.addView(hint, FrameLayout.LayoutParams(-1, -2).apply { topMargin = (0.93f * h + 0.8f * vw).toInt() })
 
         setContentView(root)
+        // Registered for the activity's lifetime so the cached app list never goes stale while paused.
+        registerReceiver(pkgRx, IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }, RECEIVER_EXPORTED)
         window.insetsController?.apply {
             hide(WindowInsets.Type.systemBars())
             systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -151,13 +166,9 @@ class HomeActivity : Activity() {
             addAction(Intent.ACTION_TIMEZONE_CHANGED)
             addAction(Intent.ACTION_DATE_CHANGED)
         }, RECEIVER_EXPORTED)
-        registerReceiver(pkgRx, IntentFilter().apply {
-            addAction(Intent.ACTION_PACKAGE_ADDED)
-            addAction(Intent.ACTION_PACKAGE_REMOVED)
-            addAction(Intent.ACTION_PACKAGE_CHANGED)
-            addDataScheme("package")
-        }, RECEIVER_EXPORTED)
-        refresh(force = false)
+        resumed = true
+        refresh(force = stale)
+        stale = false
     }
 
     override fun onPause() {
@@ -168,6 +179,11 @@ class HomeActivity : Activity() {
         hint.visibility = View.GONE
         hintPending = false
         unregisterReceiver(timeRx)
+        resumed = false
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
         unregisterReceiver(pkgRx)
     }
 
@@ -182,8 +198,11 @@ class HomeActivity : Activity() {
     /** Reloads config, apps and scores; rebuilds the views only when what they show changed (or [force]). */
     private fun refresh(force: Boolean, reload: Boolean = true) {
         if (reload) config = store.load()
-        val apps = catalog.apps()
-        val scores = ledger.scores(System.currentTimeMillis(), foreground())
+        val apps = apps ?: catalog.apps().also { apps = it }
+        val now = System.currentTimeMillis()
+        // Usage stats can take tens of ms; ranking drifts slowly, so 10 min staleness is fine.
+        if (now - fgAt > 10 * 60_000L) { fg = foreground(); fgAt = now }
+        val scores = ledger.scores(now, fg)
         // TODO(Task 10): homeBroken = !HomeHealth.isEnabled(this)
         val next = HomeModel.build(apps, config, scores, homeBroken = false) to Suggester.next(apps, config, scores)
         if (force || next != shown) {
@@ -221,20 +240,21 @@ class HomeActivity : Activity() {
     private fun build(rows: HomeRows, sug: Suggestion?) {
         body.removeAllViews()
         val its = mutableListOf<List<Item>>()
-        val bx = mutableListOf<View?>()
         val cx = mutableListOf<List<Float>>()
-        val mt = mutableListOf<Float>()
-        val glow = 3.5f * vw
-        val m = TileView.margin(glow)
+        val used = HashSet<String>()
 
-        fun tileRow(tiles: List<Tile>, twVw: Float, thVw: Float, rVw: Float, gapVw: Float, top: Float) {
-            val tw = twVw * vw; val th = thVw * vw; val gap = gapVw * vw
-            val total = tiles.size * tw + (tiles.size - 1) * gap
-            val fits = total <= w - 10 * vw
-            val start = if (fits) (w - total) / 2 else 5 * vw
+        /** A centred row; tiles shrink (with radius, gap, ring and glow) so the row fits in [maxVw] (spec §4.2). */
+        fun tileRow(tiles: List<Tile>, twVw: Float, thVw: Float, rVw: Float, gapVw: Float, top: Float, maxVw: Float): View {
+            val n = tiles.size
+            val s = HomeModel.fitScale(n, twVw, gapVw, maxVw)
+            val tw = twVw * vw * s; val th = thVw * vw * s; val gap = gapVw * vw * s
+            val glow = 3.5f * vw * s
+            val m = TileView.margin(glow)
+            val total = n * tw + (n - 1) * gap
+            val start = (w - total) / 2
             val box = FrameLayout(this).apply { clipChildren = false }
             its += tiles.mapIndexed { i, t ->
-                val v = TileView(this, art(t), tw, th, rVw * vw, 0.35f * vw, glow)
+                val v = TileView(this, art(t, tw.toInt(), th.toInt(), used), tw, th, rVw * vw * s, 0.35f * vw * s, glow)
                 box.addView(v, FrameLayout.LayoutParams((tw + 2 * m).toInt(), (th + 2 * m).toInt()).apply {
                     leftMargin = (i * (tw + gap)).toInt()
                 })
@@ -244,23 +264,24 @@ class HomeActivity : Activity() {
                 leftMargin = (start - m).toInt()
                 topMargin = (top - m).toInt()
             })
-            bx += box
             cx += tiles.indices.map { start + it * (tw + gap) + tw / 2 }
-            mt += if (fits) 0f else w - 5 * vw - (start + total)
+            return box
         }
 
         val tier2Top = 0.93f * h - 5.6f * vw
-        tileRow(rows.favorites, 22f, 12.4f, 2f, 3f, 0.34f * h)
-        if (sug != null) strip(sug, tier2Top, its, bx, cx, mt)
-        tileRow(rows.tier2, 10f, 5.6f, 1.2f, 1.6f, tier2Top)
+        tileRow(rows.favorites, 22f, 12.4f, 2f, 3f, 0.34f * h, 90f)
+        if (sug != null) strip(sug, tier2Top, its, cx)
+        // 6 apps + Apps + Setup = 91.2vw fits as is; a 9th tile (Fix Home) shrinks the row slightly.
+        tier2Box = tileRow(rows.tier2, 10f, 5.6f, 1.2f, 1.6f, tier2Top, 96f)
+        catalog.retain(used)
 
-        items = its; boxes = bx; centers = cx; minTx = mt
+        items = its
         focus = FocusModel(its.map { it.size }, cx) // rows are never empty: favorites has PickFavorites, tier 2 has AllApps/Setup
         for (r in items.indices) for (c in items[r].indices) show(r, c, r == 0 && c == 0, animate = false)
     }
 
     /** Suggestion question plus Yes / Pick another / Not now, centred above the tier-2 row. */
-    private fun strip(s: Suggestion, tier2Top: Float, its: MutableList<List<Item>>, bx: MutableList<View?>, cx: MutableList<List<Float>>, mt: MutableList<Float>) {
+    private fun strip(s: Suggestion, tier2Top: Float, its: MutableList<List<Item>>, cx: MutableList<List<Float>>) {
         val question = when (s) {
             is Suggestion.MainApp -> "You open ${s.app.label} the most. Open it when the TV turns on?"
             is Suggestion.Favorite -> "You use ${s.app.label} a lot. Add it to favorites?"
@@ -288,13 +309,14 @@ class HomeActivity : Activity() {
             x += widths[i] + gap
         }
         its += views.mapIndexed { i, v -> Item(v, buttons[i].second) }
-        bx += null
         cx += centres
-        mt += 0f
     }
 
-    private fun art(t: Tile): Drawable = when (t) {
-        is Tile.App -> catalog.tileArt(t.app.pkg)
+    private fun art(t: Tile, tw: Int, th: Int, used: MutableSet<String>): Drawable = when (t) {
+        is Tile.App -> {
+            used += catalog.key(t.app.pkg, tw, th)
+            BitmapDrawable(resources, catalog.tileBitmap(t.app.pkg, tw, th))
+        }
         Tile.PickFavorites -> catalog.card("Pick favorites")
         Tile.AllApps -> catalog.card("Apps")
         Tile.Setup -> catalog.card("Setup")
@@ -326,12 +348,7 @@ class HomeActivity : Activity() {
             is TileView -> if (animate) v.focus(on) else v.set(if (on) 1f else 0f)
             is TextView -> v.setTextColor(if (on) Theme.ACCENT else DIM)
         }
-        if (!on) return
-        boxes.last()?.alpha = if (r == items.lastIndex) 1f else 0.35f
-        boxes[r]?.let { box ->
-            val tx = (w / 2 - centers[r][c]).coerceIn(minTx[r], 0f)
-            if (animate) box.animate().translationX(tx).setDuration(150) else box.translationX = tx
-        }
+        if (on) tier2Box?.alpha = if (r == items.lastIndex) 1f else 0.35f
     }
 
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {

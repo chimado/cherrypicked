@@ -35,7 +35,15 @@ class HomeModelTest {
         val apps = (1..12).map { app("p$it") }
         val scores = apps.associate { it.pkg to it.pkg.drop(1).toDouble() }
         val r = HomeModel.build(apps, cfg(), scores, false)
-        assertEquals((12 downTo 5).map { "p$it" } + listOf("AllApps", "Setup").map { if (it == "AllApps") Tile.AllApps.toString() else Tile.Setup.toString() }, pkgs(r.tier2))
+        assertEquals((12 downTo 7).map { "p$it" } + listOf("AllApps", "Setup").map { if (it == "AllApps") Tile.AllApps.toString() else Tile.Setup.toString() }, pkgs(r.tier2))
+    }
+
+    @Test fun rowsFitTheScreen() {
+        assertEquals(1f, HomeModel.fitScale(3, 22f, 3f, 90f), 0f) // 72vw: full size
+        assertEquals(90f / 97f, HomeModel.fitScale(4, 22f, 3f, 90f), 1e-6f)
+        assertEquals(90f / 122f, HomeModel.fitScale(5, 22f, 3f, 90f), 1e-6f)
+        assertEquals(1f, HomeModel.fitScale(8, 10f, 1.6f, 96f), 0f) // 6 apps + Apps + Setup = 91.2vw
+        assertEquals(96f / 102.8f, HomeModel.fitScale(9, 10f, 1.6f, 96f), 1e-6f) // + Fix Home
     }
 
     @Test fun tier2ExcludesFavorites() {
