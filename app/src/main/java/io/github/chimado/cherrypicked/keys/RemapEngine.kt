@@ -6,6 +6,9 @@ const val DOUBLE_PRESS_MS = 300L
 private const val KEY_HOME = 3
 private const val KEY_BACK = 4
 
+/** D-pad, OK, Enter: always pass through, whatever the config says, so a bad config can't lock the owner out. Back (4) is not one. */
+val NAV_KEYS = setOf(19, 20, 21, 22, 23, 66, 160)
+
 sealed interface Effect {
     data class Fire(val action: Action) : Effect
     /** Run [RemapEngine.onTimer] at [atMs]. The engine emits [CancelSchedule] before any Schedule that would replace an outstanding one. */
@@ -92,6 +95,7 @@ class RemapEngine(private var remaps: List<Remap>) {
     }
 
     private fun startPress(keyCode: Int, repeatCount: Int, nowMs: Long, fx: MutableList<Effect>): Decision {
+        if (keyCode in NAV_KEYS) return Decision(false, fx)
         val m = remaps.forKey(keyCode)
         // repeatCount > 0: the press began before it was mapped, so its up must pass through too
         // Home is always mapped: its single press defaults to opening Cherrypicked

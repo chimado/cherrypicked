@@ -23,12 +23,12 @@ class InputCatalog(private val ctx: Context) {
 
 private val chunk = Regex("\\d+|\\D+")
 
-/** Case-insensitive, digit runs compared numerically: "HDMI 2" < "HDMI 10". */
+/** Case-insensitive, ASCII digit runs compared numerically: "HDMI 2" < "HDMI 10". Never throws (it runs in :a11y). */
 val naturalByLabel = Comparator<TvInput> { a, b ->
     val x = chunk.findAll(a.label.lowercase()).map { it.value }.toList()
     val y = chunk.findAll(b.label.lowercase()).map { it.value }.toList()
     for (i in 0 until minOf(x.size, y.size)) {
-        val r = if (x[i][0].isDigit() && y[i][0].isDigit()) x[i].toBigInteger().compareTo(y[i].toBigInteger()) else x[i].compareTo(y[i])
+        val r = if (x[i][0] in '0'..'9' && y[i][0] in '0'..'9') x[i].toBigInteger().compareTo(y[i].toBigInteger()) else x[i].compareTo(y[i])
         if (r != 0) return@Comparator r
     }
     x.size - y.size

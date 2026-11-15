@@ -3,6 +3,7 @@ package io.github.chimado.cherrypicked.setup
 import android.view.KeyEvent
 import io.github.chimado.cherrypicked.home.HomeModel
 import io.github.chimado.cherrypicked.keys.Action
+import io.github.chimado.cherrypicked.keys.NAV_KEYS
 import io.github.chimado.cherrypicked.keys.Press
 import io.github.chimado.cherrypicked.keys.Remap
 import io.github.chimado.cherrypicked.store.Config
@@ -53,8 +54,7 @@ fun Config.removeRemap(keyCode: Int, press: Press): Config {
 }
 
 /** OK and the D-pad: remapping their single press would lock the owner out of every screen, Setup included. */
-fun isNavKey(keyCode: Int) = keyCode in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_CENTER ||
-    keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+fun isNavKey(keyCode: Int) = keyCode in NAV_KEYS
 
 /**
  * A consumed key can't be re-injected, so double/long needs a single remap unless the single press is reproducible (Home, Back).
