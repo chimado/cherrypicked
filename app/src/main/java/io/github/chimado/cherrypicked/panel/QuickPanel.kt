@@ -3,7 +3,6 @@ package io.github.chimado.cherrypicked.panel
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.graphics.PixelFormat
-import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.LayerDrawable
 import android.os.SystemClock
@@ -15,6 +14,7 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
+import io.github.chimado.cherrypicked.a11y.Fonts
 import io.github.chimado.cherrypicked.keys.Action
 import io.github.chimado.cherrypicked.setup.SetupActivity
 import io.github.chimado.cherrypicked.timer.SleepTimer
@@ -22,8 +22,17 @@ import io.github.chimado.cherrypicked.timer.SleepTimer
 private const val FOCUS_BG = 0x33E0233F // Setup's focus tint
 
 internal fun sleepLabel(endMs: Long?, nowMs: Long): String {
-    val left = SleepTimer.remainingMs(endMs, nowMs) ?: return "Sleep timer: Off"
+    val left = SleepTimer.remainingMs(endMs, nowMs)?.takeIf { it > 0 } ?: return "Sleep timer: Off" // expired-but-unfired reads Off
     return "Sleep timer: ${(left + 59_999) / 60_000} min left"
+}
+
+enum class PanelRoute { ENGINE, CLOSE, PANEL }
+
+/** Where a key goes. The press that opened the panel (down before [openedAt]) stays with the engine so it sees its UP. */
+fun panelRoute(open: Boolean, downTime: Long, openedAt: Long, code: Int, down: Boolean): PanelRoute = when {
+    !open || downTime < openedAt -> PanelRoute.ENGINE
+    !down && (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_HOME) -> PanelRoute.CLOSE
+    else -> PanelRoute.PANEL
 }
 
 /**
@@ -62,7 +71,7 @@ class QuickPanel(
             })
         }
         sel = 0
-        val regular = Typeface.createFromAsset(svc.assets, "Inter-Regular.ttf")
+        val regular = Fonts.regular(svc)
         val v = LinearLayout(svc).apply {
             orientation = LinearLayout.VERTICAL
             val p = Theme.vw(2f, w).toInt()
@@ -99,13 +108,12 @@ class QuickPanel(
     }
 
     /** Called for every key while open; always consumes. Up/Down move on press (and repeat); OK acts on release. */
-    fun onKey(event: KeyEvent): Boolean {
-        val down = event.action == KeyEvent.ACTION_DOWN
-        when (event.keyCode) {
+    fun onKey(code: Int, down: Boolean, canceled: Boolean): Boolean {
+        when (code) {
             KeyEvent.KEYCODE_DPAD_UP -> if (down) move(-1)
             KeyEvent.KEYCODE_DPAD_DOWN -> if (down) move(1)
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
-                if (!down && !event.isCanceled) rows.getOrNull(sel)?.let { Log.i("CP", "panel ok ${it.id}"); it.ok() }
+                if (!down && !canceled) rows.getOrNull(sel)?.let { Log.i("CP", "panel ok ${it.id}"); it.ok() }
         }
         return true
     }

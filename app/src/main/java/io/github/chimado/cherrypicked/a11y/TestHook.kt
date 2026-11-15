@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
+import android.os.SystemClock
 import android.util.Log
 import io.github.chimado.cherrypicked.keys.Action
 import io.github.chimado.cherrypicked.keys.Press
@@ -17,7 +18,7 @@ import io.github.chimado.cherrypicked.keys.decodeAction
 class TestHook(
     private val handler: Handler,
     private val run: (Action) -> Unit,
-    private val key: (keyCode: Int, down: Boolean, repeatCount: Int) -> Unit,
+    private val key: (keyCode: Int, down: Boolean, repeatCount: Int, downTime: Long) -> Unit,
 ) : BroadcastReceiver() {
     data class Step(val atMs: Long, val down: Boolean, val repeatCount: Int = 0)
 
@@ -35,7 +36,11 @@ class TestHook(
         Log.i("CP", "test key=$code press=$press")
         if (code < 0 || press == null) { Log.w("CP", "test needs key=<code> press=SINGLE|DOUBLE|LONG"); return }
         cancel() // a new command replaces any script still running
-        for (s in script(press)) handler.postDelayed({ key(code, s.down, s.repeatCount) }, this, s.atMs)
+        var downTime = 0L // uptime at each press's first DOWN, reused for its repeats and UP, like a real KeyEvent
+        for (s in script(press)) handler.postDelayed({
+            if (s.down && s.repeatCount == 0) downTime = SystemClock.uptimeMillis()
+            key(code, s.down, s.repeatCount, downTime)
+        }, this, s.atMs)
     }
 
     /** Drops pending synthetic events. */

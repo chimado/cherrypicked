@@ -2,7 +2,6 @@ package io.github.chimado.cherrypicked.a11y
 
 import android.accessibilityservice.AccessibilityService
 import android.graphics.PixelFormat
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.util.Log
@@ -24,7 +23,7 @@ class Notice(private val svc: AccessibilityService, private val handler: Handler
         val w = svc.resources.displayMetrics.widthPixels
         val v = TextView(svc).apply {
             this.text = text
-            typeface = Typeface.createFromAsset(svc.assets, "Inter-Regular.ttf")
+            typeface = Fonts.regular(svc)
             setTextSize(TypedValue.COMPLEX_UNIT_PX, Theme.vw(1.4f, w))
             setTextColor(Theme.TEXT)
             val px = Theme.vw(1f, w).toInt(); val py = Theme.vw(0.6f, w).toInt()

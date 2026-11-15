@@ -23,7 +23,9 @@ import io.github.chimado.cherrypicked.keys.KeyNames
 import io.github.chimado.cherrypicked.keys.Remap
 import io.github.chimado.cherrypicked.keys.RemapEngine
 import io.github.chimado.cherrypicked.keys.encode
+import io.github.chimado.cherrypicked.panel.PanelRoute
 import io.github.chimado.cherrypicked.panel.QuickPanel
+import io.github.chimado.cherrypicked.panel.panelRoute
 import io.github.chimado.cherrypicked.store.ConfigStore
 import io.github.chimado.cherrypicked.store.writeDurably
 import io.github.chimado.cherrypicked.timer.RestoreResult
@@ -43,8 +45,8 @@ class CpAccessibilityService : AccessibilityService() {
     private val runner: ActionRunner by lazy { ActionRunner(this, ::cycleSleepTimer) { panel.toggle() } }
     private val panel: QuickPanel by lazy { QuickPanel(this, { runner.run(it) }) { sleepEndMs } }
     private val engineTimer = Runnable { handle(engine.onTimer(SystemClock.uptimeMillis())) }
-    private val testHook = TestHook(handler, { runner.run(it) }) { code, down, repeat ->
-        Log.i("CP", "test feed key=$code down=$down repeat=$repeat consume=${feedKey(code, down, repeat, false)}")
+    private val testHook = TestHook(handler, { runner.run(it) }) { code, down, repeat, downTime ->
+        Log.i("CP", "test feed key=$code down=$down repeat=$repeat consume=${routeKey(code, down, repeat, false, downTime)}")
     }
 
     /** Wall-clock end of the running sleep timer, or null. Read by the quick panel (same process). */
@@ -73,7 +75,7 @@ class CpAccessibilityService : AccessibilityService() {
         saveSleep(end)
         Log.i("CP", if (end == null) "sleep off" else "sleep set end=$end (${(end - now) / 60_000} min)")
         val msg = if (end == null) "Sleep timer off" else "Sleep in ${(end - now) / 60_000} min"
-        notice.show(msg)
+        if (!panel.isOpen()) notice.show(msg) // the open panel's row shows it instead
     }
 
     private fun restoreSleep() {
@@ -175,17 +177,18 @@ class CpAccessibilityService : AccessibilityService() {
             return true
         }
         if (learning) { Log.i("CP", "learn key=${event.keyCode} ${KeyNames.label(event.keyCode)}"); return true }
-        // While open the panel owns every key, except the rest of the press that opened it (the engine must see that UP).
-        if (panel.isOpen() && event.downTime >= panel.openedAt) {
-            val code = event.keyCode
-            if (event.action == KeyEvent.ACTION_UP && (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_HOME)) panel.close()
-            else panel.onKey(event)
-            return true
-        }
-        return feedKey(event.keyCode, event.action == KeyEvent.ACTION_DOWN, event.repeatCount, event.isCanceled)
+        return routeKey(event.keyCode, event.action == KeyEvent.ACTION_DOWN, event.repeatCount, event.isCanceled, event.downTime)
     }
 
-    /** The one remap path, shared by real keys and [TestHook]. Uptime clock throughout, matching handler.postAtTime. */
+    /** Shared by real keys and [TestHook]: while open the panel owns every key (see [panelRoute]), otherwise the remap engine. */
+    private fun routeKey(code: Int, down: Boolean, repeat: Int, canceled: Boolean, downTime: Long): Boolean =
+        when (panelRoute(panel.isOpen(), downTime, panel.openedAt, code, down)) {
+            PanelRoute.ENGINE -> feedKey(code, down, repeat, canceled)
+            PanelRoute.CLOSE -> { panel.close(); true }
+            PanelRoute.PANEL -> panel.onKey(code, down, canceled)
+        }
+
+    /** The one remap path. Uptime clock throughout, matching handler.postAtTime. */
     private fun feedKey(code: Int, down: Boolean, repeat: Int, canceled: Boolean): Boolean {
         val d = engine.onKey(code, down, repeat, canceled, SystemClock.uptimeMillis())
         handle(d.effects)
