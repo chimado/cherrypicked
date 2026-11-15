@@ -21,5 +21,7 @@ class AutoOpenPolicyTest {
     @Test fun bootOpensMain() = assertEquals("com.main", decide(Trigger.BOOT, fg = "com.tcl.tv"))
     @Test fun wakeOpensMain() = assertEquals("com.main", decide(Trigger.WAKE, fg = "com.other"))
     @Test fun wakeToHdmiDoesNothing() = assertNull(decide(Trigger.WAKE, fg = "com.tcl.tv"))
+    @Test fun wakeWithUnknownForegroundDoesNothing() = assertNull(decide(Trigger.WAKE, fg = null))
+    @Test fun bootIgnoresUnknownForeground() = assertEquals("com.main", decide(Trigger.BOOT, fg = null))
     @Test fun wakeAlreadyInMainDoesNothing() = assertNull(decide(Trigger.WAKE, fg = "com.main"))
 }

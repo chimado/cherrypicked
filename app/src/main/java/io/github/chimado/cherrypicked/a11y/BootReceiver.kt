@@ -8,6 +8,7 @@ import android.util.Log
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        Log.i("CP", "boot open=${autoOpen(ctx, Trigger.BOOT, null, emptySet())}")
+        // Boot auto-open runs from CpAccessibilityService.onServiceConnected (receivers are often blocked at boot on TCL).
+        Log.i("CP", "boot received pid=${android.os.Process.myPid()}")
     }
 }

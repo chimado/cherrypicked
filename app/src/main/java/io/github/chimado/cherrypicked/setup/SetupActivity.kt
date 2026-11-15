@@ -84,9 +84,9 @@ class SetupActivity : Activity() {
         render(s.opener, s.section)
     }
 
-    override fun finish() {
-        super.finish()
-        Process.killProcess(Process.myPid()) // alone in :setup
+    override fun onDestroy() {
+        super.onDestroy()
+        Process.killProcess(Process.myPid()) // alone in :setup; also covers leaving with Home, not only finish()
     }
 
     private fun edit(edit: (Config) -> Config) {
@@ -132,6 +132,7 @@ class SetupActivity : Activity() {
             add(Row("Not connected"))
             add(Row("1. Settings > Accessibility > Cherrypicked > On"))
             add(Row("2. If that is greyed out, run from a computer: adb shell settings put secure enabled_accessibility_services <current list>:$PKG/.a11y.CpAccessibilityService"))
+            add(Row("3. On TCL TVs also allow auto-start: adb shell appops set $PKG APP_AUTO_START allow"))
         }
         add(Row("Open accessibility settings", "a11y") { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) })
 
