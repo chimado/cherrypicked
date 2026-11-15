@@ -12,11 +12,14 @@ object SleepTimer {
     const val LATE_GRACE_MS = 60_000L
     private const val MIN_MS = 60_000L
 
-    /** off -> 15 -> 30 -> 60 -> 90 -> 120 -> off. A running timer counts as its remaining minutes rounded up. */
+    /** off -> 15 -> 30 -> 60 -> 90 -> 120 -> off. A running timer sits at the smallest preset >= its remaining minutes. */
     fun next(currentEndMs: Long?, nowMs: Long): Long? {
         val left = remainingMs(currentEndMs, nowMs)
-        val leftMin = if (left == null) 0L else (left + MIN_MS - 1) / MIN_MS
-        val p = if (left == null) PRESETS_MIN.first() else PRESETS_MIN.firstOrNull { it > leftMin }
+        val p = if (left == null) PRESETS_MIN.first() else {
+            val leftMin = (left + MIN_MS - 1) / MIN_MS
+            val cur = PRESETS_MIN.indexOfFirst { it >= leftMin }
+            if (cur < 0) null else PRESETS_MIN.getOrNull(cur + 1) // beyond the top preset counts as top: off
+        }
         return p?.let { nowMs + it * MIN_MS }
     }
 

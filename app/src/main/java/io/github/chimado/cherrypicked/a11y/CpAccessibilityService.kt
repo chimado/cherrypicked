@@ -14,7 +14,6 @@ import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
-import android.widget.Toast
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import io.github.chimado.cherrypicked.apps.AppCatalog
@@ -49,9 +48,10 @@ class CpAccessibilityService : AccessibilityService() {
     /** Wall-clock end of the running sleep timer, or null. Read by the quick panel (same process). */
     var sleepEndMs: Long? = null
         private set
+    private val notice by lazy { Notice(this, handler) }
     private val sleepFile by lazy { File(filesDir, "sleep_timer") }
     private val sleepFire = Runnable {
-        Log.i("CP", "sleep timer fired")
+        Log.i("CP", "sleep fire")
         saveSleep(null)
         runner.run(Action.ScreenOff)
     }
@@ -69,13 +69,16 @@ class CpAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
         val end = SleepTimer.next(sleepEndMs, now)
         saveSleep(end)
+        Log.i("CP", if (end == null) "sleep off" else "sleep set end=$end (${(end - now) / 60_000} min)")
         val msg = if (end == null) "Sleep timer off" else "Sleep in ${(end - now) / 60_000} min"
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        notice.show(msg)
     }
 
     private fun restoreSleep() {
         val saved = try { sleepFile.readText().trim().toLong() } catch (_: IOException) { null } catch (_: NumberFormatException) { null }
-        when (val r = SleepTimer.restore(saved, System.currentTimeMillis())) {
+        val r = SleepTimer.restore(saved, System.currentTimeMillis())
+        Log.i("CP", "sleep restore ${r.javaClass.simpleName}")
+        when (r) {
             is RestoreResult.Arm -> saveSleep(r.endMs)
             RestoreResult.FireNow -> sleepFire.run()
             RestoreResult.Drop -> saveSleep(null)
@@ -91,6 +94,7 @@ class CpAccessibilityService : AccessibilityService() {
     private val screenRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             Log.i("CP", "${i.action?.substringAfterLast('.')} pid=${Process.myPid()} t=${SystemClock.elapsedRealtime()}")
+            if (i.action == Intent.ACTION_SCREEN_OFF && sleepEndMs != null) { Log.i("CP", "sleep cleared (screen off)"); saveSleep(null) } // uptime pauses in sleep: a stale timer would fire after wake
             handler.removeCallbacks(wakeCheck) // screen off before settling: drop the pending check
             if (i.action == Intent.ACTION_SCREEN_ON) {
                 refreshRemaps()
@@ -220,6 +224,7 @@ class CpAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(learnEnd)
         handler.removeCallbacks(engineTimer)
         handler.removeCallbacks(sleepFire) // the saved file stays, so a reconnect re-arms it
+        notice.dismiss()
         testHook.cancel()
         engine.reset()
         learning = false

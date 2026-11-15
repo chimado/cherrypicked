@@ -20,6 +20,12 @@ class SleepTimerTest {
     @Test fun cycleAfterSomeTimeElapsedStillAdvances() =
         assertEquals(now + 30 * min, SleepTimer.next(now + 15 * min - 10_000, now))
 
+    @Test fun positionIsSmallestPresetAtLeastRemaining() {
+        assertNull(SleepTimer.next(now + 100 * min, now))
+        assertEquals(now + 60 * min, SleepTimer.next(now + 29 * min, now))
+        assertEquals(now + 30 * min, SleepTimer.next(now + 10 * min, now))
+    }
+
     @Test fun restoreFutureRearms() =
         assertEquals(RestoreResult.Arm(now + min), SleepTimer.restore(now + min, now))
 
