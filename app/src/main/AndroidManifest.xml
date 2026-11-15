@@ -46,5 +46,11 @@
             android:exported="false"
             android:screenOrientation="landscape"
             android:theme="@style/AppTheme" />
+        <activity
+            android:name=".setup.SetupActivity"
+            android:exported="false"
+            android:process=":setup"
+            android:screenOrientation="landscape"
+            android:theme="@style/AppTheme" />
     </application>
 </manifest>
