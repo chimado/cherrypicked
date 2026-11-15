@@ -67,7 +67,6 @@ class HomeActivity : Activity() {
     private var shown: Pair<HomeRows, Suggestion?>? = null
     private var items: List<List<Item>> = emptyList()
     private var tier2Box: View? = null
-    private var inputs: List<TvInput>? = null // listed once per rebuild trigger; dropped by pkgRx
     private var apps: List<AppEntry>? = null // cached; dropped by pkgRx
     private var excluded: Set<String>? = null // other launchers + TV-input apps, never suggested; dropped by pkgRx
     private var fg: Map<String, Long> = emptyMap()
@@ -104,7 +103,6 @@ class HomeActivity : Activity() {
         override fun onReceive(c: Context, i: Intent) {
             i.data?.schemeSpecificPart?.let { catalog.evict(it) }
             apps = null
-            inputs = null
             excluded = null
             if (resumed) refresh(force = true) else stale = true
         }
@@ -204,7 +202,7 @@ class HomeActivity : Activity() {
     /** Reloads config, apps and scores; rebuilds the views only when what they show changed (or [force]). */
     private fun refresh(force: Boolean, reload: Boolean = true) {
         if (reload) config = store.load()
-        val inputs = inputs ?: InputCatalog(this).inputs().also { inputs = it }
+        val inputs = InputCatalog(this).inputs() // one cheap binder call; never cached, so renames/hot-plug show up
         val apps = apps ?: catalog.apps().also { apps = it }
         val now = System.currentTimeMillis()
         // Usage stats can take tens of ms; ranking drifts slowly, so 10 min staleness is fine.
@@ -318,7 +316,7 @@ class HomeActivity : Activity() {
             BitmapDrawable(resources, catalog.tileBitmap(t.app.pkg, tw, th, r))
         }
         is Tile.Input -> {
-            val key = "input:${t.input.id}@${tw}x$th/$r"
+            val key = "input:${t.input.id}:${t.input.label}@${tw}x$th/$r"
             used += key
             BitmapDrawable(resources, catalog.cachedBitmap(key, tw, th) { catalog.card(t.input.label, InputIcon, r = r) })
         }
