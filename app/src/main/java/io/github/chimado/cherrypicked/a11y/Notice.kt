@@ -11,12 +11,14 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
+import io.github.chimado.cherrypicked.store.ConfigStore
 
 /**
  * A small top-centre pill (TCL's toast quota blocks Toasts), drawn by whichever process hosts it with window [type].
  * The view exists only while shown. [onHidden] runs when a notice times out (false) or fails to show (true), not when replaced.
  */
 class Notice(private val svc: Context, private val handler: Handler, private val type: Int, private val onHidden: (failed: Boolean) -> Unit = {}) {
+    private val store by lazy { ConfigStore(svc.filesDir) } // skips parsing while config.json is unchanged
     private var view: View? = null
     private val hide = Runnable { dismiss(); onHidden(false) }
 
@@ -24,6 +26,7 @@ class Notice(private val svc: Context, private val handler: Handler, private val
 
     fun show(text: String) {
         dismiss()
+        Theme.load(store.load()) // this process may have missed an appearance change
         Log.i("CP", "notice \"$text\"")
         val w = svc.resources.displayMetrics.widthPixels
         val lp = WindowManager.LayoutParams(

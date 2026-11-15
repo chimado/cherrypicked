@@ -14,15 +14,22 @@ import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
 import android.util.TypedValue
+import android.view.KeyEvent
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import io.github.chimado.cherrypicked.ACCENTS
+import io.github.chimado.cherrypicked.BASES
+import io.github.chimado.cherrypicked.PATTERNS
 import io.github.chimado.cherrypicked.Theme
+import io.github.chimado.cherrypicked.cycle
+import io.github.chimado.cherrypicked.palette
 import io.github.chimado.cherrypicked.a11y.KeyLearn
 import io.github.chimado.cherrypicked.apps.AppCatalog
 import io.github.chimado.cherrypicked.health.HomeHealth
 import io.github.chimado.cherrypicked.home.AppEntry
 import io.github.chimado.cherrypicked.home.HomeModel
+import io.github.chimado.cherrypicked.home.PatternDrawable
 import io.github.chimado.cherrypicked.home.TvInput
 import io.github.chimado.cherrypicked.inputs.InputCatalog
 import io.github.chimado.cherrypicked.keys.Action
@@ -43,8 +50,6 @@ import java.io.IOException
 import kotlin.math.max
 
 private const val PKG = "io.github.chimado.cherrypicked"
-private const val DIM = 0x99E9EAEE.toInt()
-private const val FOCUS_BG = 0x33E0233F
 private const val TEST_PROMPT = "Press any button on your remote…"
 
 private const val WAY_HOME = "Keep a way back to Cherrypicked"
@@ -52,7 +57,8 @@ private fun remapId(key: Int, press: Press) = "remap:$key:${press.name}"
 private fun pressLabel(p: Press) = p.name.lowercase().replaceFirstChar(Char::uppercase)
 
 /** [id]: a stable focus id for an actionable row, `#key` for a section header (the target of a "section" extra). */
-private class Row(val text: String, val id: String? = null, val onClick: (() -> Unit)? = null) {
+/** [onSide]: left/right on the row, with -1 or 1 (Appearance choices). */
+private class Row(val text: String, val id: String? = null, val onSide: ((Int) -> Unit)? = null, val onClick: (() -> Unit)? = null) { // onClick last: rows pass it as a trailing lambda
     val section get() = id?.startsWith("#") == true
 }
 
@@ -62,6 +68,7 @@ private sealed class Sub(val opener: String, val section: String) {
     object PickFavorite : Sub("add-fav", "favorites")
     object PickMain : Sub("main", "autoopen")
     object Hidden : Sub("hidden", "hidden")
+    object Appearance : Sub("appearance", "appearance")
     class ImportConfirm(val check: ImportCheck.Ok) : Sub("import", "backup")
     class RemapActions(val r: Remap) : Sub(remapId(r.keyCode, r.press), "buttons")
     object Learn : Sub("add-remap", "buttons")
@@ -109,6 +116,7 @@ class SetupActivity : Activity() {
         super.onCreate(savedInstanceState)
         store = ConfigStore(filesDir)
         config = store.load()
+        Theme.load(config)
         apps = AppCatalog(this).apps().sortedBy { it.label.lowercase() }
         inputs = InputCatalog(this).inputs()
         val b = windowManager.currentWindowMetrics.bounds
@@ -116,7 +124,7 @@ class SetupActivity : Activity() {
         regular = Typeface.createFromAsset(assets, "Inter-Regular.ttf")
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((8 * vw).toInt(), (5 * vw).toInt(), (8 * vw).toInt(), (5 * vw).toInt()) }
         scroll = ScrollView(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Theme.BG_TOP, Theme.BG_BOTTOM))
+            background = baseBg()
             addView(list)
         }
         setContentView(scroll)
@@ -147,6 +155,7 @@ class SetupActivity : Activity() {
         config = edit(store.load()) // fresh: Home may have saved since
         note = try { store.save(config); null } catch (_: IOException) { "Couldn't save" }
         if (note == null) sendBroadcast(Intent(KeyLearn.ACTION_CONFIG_CHANGED).setPackage(PKG))
+        if (Theme.load(config)) scroll.background = baseBg() // an appearance change or an import
     }
 
     /** A favorite entry's label: an app package or `input:<id>`. */
@@ -213,11 +222,29 @@ class SetupActivity : Activity() {
                 inputs.map { pick(Action.OpenInput(it.id), "Input: ${it.label}") } +
                 listOf(Action.Home, Action.Back, Action.QuickPanel, Action.SleepTimer, Action.ScreenOff, Action.Nothing).map { pick(it, actionLabel(it)) }
         }
+        Sub.Appearance -> {
+            val p = palette(config)
+            fun look(id: String, label: String, change: (Config, Int) -> Config): Row {
+                val step = { d: Int -> edit { change(it, d) } }
+                return Row("‹ $label ›", id, onSide = step) { step(1) }
+            }
+            listOf(
+                Row("Appearance"),
+                look("pattern", "Pattern: ${p.pattern}") { c, d -> c.copy(pattern = cycle(PATTERNS, c.pattern, d)) },
+                look("accent", "Accent: ${p.accentName}") { c, d -> c.copy(accent = cycle(ACCENTS.keys.toList(), c.accent, d)) },
+                look("base", "Base: ${p.baseName}") { c, d -> c.copy(base = cycle(BASES.keys.toList(), c.base, d)) },
+            )
+        }
         null -> mainRows()
     }
 
+    private fun baseBg() = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Theme.BG_TOP, Theme.BG_BOTTOM))
+
     private fun mainRows(): List<Row> = buildList {
         note?.let { add(Row(it)) }
+        add(Row("Appearance", "#appearance"))
+        palette(config).let { p -> add(Row("Choose look… (${p.pattern}, ${p.accentName}, ${p.baseName})", "appearance") { sub = Sub.Appearance }) }
+
         add(Row("Favorites", "#favorites"))
         config.favorites.forEach { p -> add(Row(label(p), "fav:$p") { sub = Sub.FavActions(p) }) }
         add(if (config.favorites.size >= HomeModel.MAX_FAVORITES) Row("Add favorite... (5 of 5)")
@@ -327,6 +354,9 @@ class SetupActivity : Activity() {
         list.removeAllViews()
         val rows = rows()
         rows.forEach { list.addView(row(it)) }
+        if (sub === Sub.Appearance) list.addView(Preview(this), LinearLayout.LayoutParams((48 * vw).toInt(), (27 * vw).toInt()).apply {
+            topMargin = (1.5 * vw).toInt(); leftMargin = (1.5 * vw).toInt()
+        }) // after the rows, so focus indices still match
         val i = focusTarget(rows.map { if (it.onClick != null || it.section) it.id else null }, focusId, section)
         val target = list.getChildAt(i) ?: return
         target.post { target.requestFocus(); target.requestRectangleOnScreen(android.graphics.Rect(0, 0, target.width, target.height)) }
@@ -336,14 +366,21 @@ class SetupActivity : Activity() {
         text = r.text
         typeface = regular
         setTextSize(TypedValue.COMPLEX_UNIT_PX, vw * if (r.section) 1.4f else 1.7f)
-        setTextColor(if (r.section) Theme.ACCENT else if (r.onClick == null) DIM else Theme.TEXT)
+        setTextColor(if (r.section) Theme.ACCENT else if (r.onClick == null) Theme.DIM else Theme.TEXT)
         setPadding((1.5 * vw).toInt(), (if (r.section) 2.2 * vw else 0.9 * vw).toInt(), (1.5 * vw).toInt(), (0.9 * vw).toInt())
         if (r.onClick != null) {
             tag = r.id
+            r.onSide?.let { side ->
+                setOnKeyListener { _, code, e ->
+                    val d = when (code) { KeyEvent.KEYCODE_DPAD_LEFT -> -1; KeyEvent.KEYCODE_DPAD_RIGHT -> 1; else -> 0 }
+                    if (d != 0 && e.action == KeyEvent.ACTION_DOWN) { note = null; side(d); render(r.id, null) }
+                    d != 0
+                }
+            }
             isFocusable = true
             setOnClickListener { click(r) }
             setOnFocusChangeListener { v, f ->
-                v.background = if (f) GradientDrawable().apply { setColor(FOCUS_BG); setStroke(0, 0) } else ColorDrawable(0)
+                v.background = if (f) GradientDrawable().apply { setColor(Theme.FOCUS_BG); setStroke(0, 0) } else ColorDrawable(0)
                 (v as TextView).setTextColor(if (f) Theme.ACCENT else Theme.TEXT)
                 // Focus moved off an armed reset: disarm. Posted, so a removal by render (parent gone) doesn't count.
                 if (!f && r.id == "reset-remaps") v.post {
@@ -353,3 +390,42 @@ class SetupActivity : Activity() {
         }
     }
 }
+
+/** A small home screen in the current look: pattern, four tiles (the first focused), the tier-2 row and the clock. */
+private class Preview(ctx: Context) : android.view.View(ctx) {
+    private val bg = PatternDrawable(Theme.palette)
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val clockFont = Typeface.createFromAsset(ctx.assets, "Inter-ExtraLight.ttf")
+    private val tiles = intArrayOf(0xFF3A3F4A.toInt(), 0xFF2F3A36.toInt(), 0xFF40343A.toInt(), 0xFF333847.toInt())
+
+    override fun onDraw(c: android.graphics.Canvas) {
+        bg.setBounds(0, 0, width, height)
+        bg.draw(c)
+        c.save()
+        c.scale(width / 960f, height / 540f) // the mockup's design space
+        val tw = 211f; val th = 119f; val x0 = (960 - (tw * 4 + 26 * 3)) / 2; val y0 = 540 * .40f
+        for (i in 0 until 4) {
+            val x = x0 + i * (tw + 26)
+            c.save()
+            if (i == 0) {
+                c.scale(1.07f, 1.07f, x + tw / 2, y0 + th / 2)
+                paint.style = android.graphics.Paint.Style.FILL; paint.color = (0x33 shl 24) or (Theme.ACCENT and 0xFFFFFF)
+                c.drawRoundRect(x - 6, y0 - 6, x + tw + 6, y0 + th + 6, 24f, 24f, paint)
+            }
+            paint.style = android.graphics.Paint.Style.FILL; paint.color = tiles[i]
+            c.drawRoundRect(x, y0, x + tw, y0 + th, 19f, 19f, paint)
+            if (i == 0) {
+                paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = 3.4f; paint.color = Theme.ACCENT
+                c.drawRoundRect(x, y0, x + tw, y0 + th, 19f, 19f, paint)
+            }
+            c.restore()
+        }
+        paint.style = android.graphics.Paint.Style.FILL; paint.color = 0x593A3D45 // tier 2 at 35%
+        val sx0 = (960 - (150 * 5 + 18 * 4)) / 2f
+        for (i in 0 until 5) c.drawRoundRect(sx0 + i * 168, 540 * .72f, sx0 + i * 168 + 150, 540 * .72f + 84, 13f, 13f, paint)
+        paint.textAlign = android.graphics.Paint.Align.RIGHT; paint.typeface = clockFont; paint.textSize = 33f; paint.color = Theme.ACCENT
+        c.drawText(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date()), 912f, 540 * .06f + 32, paint)
+        c.restore()
+    }
+}
+

@@ -26,7 +26,6 @@ import kotlin.math.max
 import kotlin.math.min
 
 private const val COLS = 5
-private const val DIM = 0x99E9EAEE.toInt()
 
 /** Every non-hidden app, 5 per row; a header toggle flips Most used / A-Z (not saved). */
 class AllAppsActivity : Activity() {
@@ -52,6 +51,7 @@ class AllAppsActivity : Activity() {
         catalog = AppCatalog(this)
         ledger = UsageLedger(File(filesDir, "usage.json"))
         config = ConfigStore(filesDir).load()
+        Theme.load(config)
         val b = windowManager.currentWindowMetrics.bounds
         w = max(b.width(), b.height()).toFloat()
         vw = w / 100f
@@ -118,7 +118,7 @@ class AllAppsActivity : Activity() {
                 val label = TextView(this).apply {
                     text = a.label; typeface = regular; maxLines = 1; includeFontPadding = false
                     ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER_HORIZONTAL
-                    setTextSize(TypedValue.COMPLEX_UNIT_PX, 1.3f * vw); setTextColor(DIM)
+                    setTextSize(TypedValue.COMPLEX_UNIT_PX, 1.3f * vw); setTextColor(Theme.DIM)
                 }
                 box.addView(label, FrameLayout.LayoutParams(tw.toInt(), -2).apply {
                     leftMargin = x.toInt(); topMargin = (m + th + 0.5f * vw).toInt()
@@ -143,10 +143,10 @@ class AllAppsActivity : Activity() {
     }
 
     private fun show(r: Int, c: Int, on: Boolean) {
-        if (r == 0) { toggle.setTextColor(if (on) Theme.ACCENT else DIM); return }
+        if (r == 0) { toggle.setTextColor(if (on) Theme.ACCENT else Theme.DIM); return }
         val (v, label) = tiles[r - 1][c]
         v.set(if (on) 1f else 0f)
-        label.setTextColor(if (on) Theme.TEXT else DIM)
+        label.setTextColor(if (on) Theme.TEXT else Theme.DIM)
         if (on) {
             val box = rowViews[r - 1]
             val pad = scroll.paddingTop

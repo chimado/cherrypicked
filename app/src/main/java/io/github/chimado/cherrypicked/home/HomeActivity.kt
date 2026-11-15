@@ -42,8 +42,6 @@ import kotlin.math.max
 import kotlin.math.min
 
 private const val TAG = "Cherrypicked"
-private const val DIM = 0x99E9EAEE.toInt()
-private const val FOCUS_BG = 0x33E0233F // as in Setup
 // Started by name: these activities land in Tasks 7 and 8; until then opening them is a no-op.
 private const val ALL_APPS = "io.github.chimado.cherrypicked.home.AllAppsActivity"
 private const val SETUP = "io.github.chimado.cherrypicked.setup.SetupActivity"
@@ -112,6 +110,7 @@ class HomeActivity : Activity() {
         super.onCreate(savedInstanceState)
         catalog = AppCatalog(this)
         store = ConfigStore(filesDir)
+        Theme.load(store.load())
         ledger = UsageLedger(File(filesDir, "usage.json"))
         val b = windowManager.currentWindowMetrics.bounds
         w = max(b.width(), b.height()).toFloat()
@@ -119,7 +118,7 @@ class HomeActivity : Activity() {
         vw = w / 100f
 
         val root = FrameLayout(this)
-        root.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Theme.BG_TOP, Theme.BG_BOTTOM))
+        root.background = PatternDrawable(Theme.palette)
         body = FrameLayout(this).apply { clipChildren = false }
         root.addView(body, FrameLayout.LayoutParams(-1, -1))
         val light = Typeface.createFromAsset(assets, "Inter-ExtraLight.ttf")
@@ -131,8 +130,8 @@ class HomeActivity : Activity() {
             })
         }
         clock = corner(light, 3.4f, Theme.ACCENT, 0.06f)
-        date = corner(regular, 1.4f, 0x80E9EAEE.toInt(), 0.13f)
-        hint = text(regular, 1.4f, 0x80E9EAEE.toInt()).apply {
+        date = corner(regular, 1.4f, Theme.FAINT, 0.13f)
+        hint = text(regular, 1.4f, Theme.FAINT).apply {
             text = "Settings live under Setup"
             gravity = Gravity.CENTER_HORIZONTAL
             visibility = View.GONE
@@ -202,6 +201,14 @@ class HomeActivity : Activity() {
     /** Reloads config, apps and scores; rebuilds the views only when what they show changed (or [force]). */
     private fun refresh(force: Boolean, reload: Boolean = true) {
         if (reload) config = store.load()
+        // Appearance changed in Setup: recolour in place (recreate() would hold a second set of tile bitmaps).
+        val recolour = Theme.load(config)
+        if (recolour) {
+            (body.parent as View).background = PatternDrawable(Theme.palette)
+            clock.setTextColor(Theme.ACCENT)
+            date.setTextColor(Theme.FAINT)
+            hint.setTextColor(Theme.FAINT)
+        }
         val inputs = InputCatalog(this).inputs() // one cheap binder call; never cached, so renames/hot-plug show up
         val apps = apps ?: catalog.apps().also { apps = it }
         val now = System.currentTimeMillis()
@@ -211,7 +218,7 @@ class HomeActivity : Activity() {
         val ex = excluded ?: (packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
             .map { it.activityInfo.packageName }.toSet() + tvInputPackages(this)).also { excluded = it }
         val next = HomeModel.build(apps, config, scores, homeBroken = !HomeHealth.isEnabled(this), inputs = inputs) to Suggester.next(apps, config, scores, ex)
-        if (force || next != shown) {
+        if (force || recolour || next != shown) { // tiles take the accent when built
             shown = next
             build(next.first, next.second)
         }
@@ -296,7 +303,7 @@ class HomeActivity : Activity() {
         )
         val pad = 1f * vw; val gap = 1.5f * vw
         val vpad = 0.4f * vw // room for the focus pill
-        val views = buttons.map { (label, _) -> text(regular, 1.4f, DIM).apply { text = label; setPadding(pad.toInt(), vpad.toInt(), pad.toInt(), vpad.toInt()) } }
+        val views = buttons.map { (label, _) -> text(regular, 1.4f, Theme.DIM).apply { text = label; setPadding(pad.toInt(), vpad.toInt(), pad.toInt(), vpad.toInt()) } }
         val widths = views.map { it.paint.measureText(it.text.toString()) + 2 * pad }
         var x = (w - widths.sum() - gap * (views.size - 1)) / 2
         val centres = mutableListOf<Float>()
@@ -355,8 +362,8 @@ class HomeActivity : Activity() {
         when (val v = items[r][c].view) {
             is TileView -> if (animate) v.focus(on) else v.set(if (on) 1f else 0f)
             is TextView -> {
-                v.setTextColor(if (on) Theme.ACCENT else DIM)
-                v.background = if (on) GradientDrawable().apply { setColor(FOCUS_BG); cornerRadius = 10 * vw } else null // clamped to a pill
+                v.setTextColor(if (on) Theme.ACCENT else Theme.DIM)
+                v.background = if (on) GradientDrawable().apply { setColor(Theme.FOCUS_BG); cornerRadius = 10 * vw } else null // clamped to a pill
             }
         }
         if (on) tier2Box?.alpha = if (r == items.lastIndex) 1f else 0.35f
