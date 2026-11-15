@@ -3,6 +3,7 @@ package io.github.chimado.cherrypicked.store
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -30,6 +31,12 @@ class ConfigStoreTest {
         ConfigStore(tmp.root).save(Config())
         assertFalse(File(tmp.root, "config.json.tmp").exists())
         assertTrue(File(tmp.root, "config.json").exists())
+    }
+
+    @Test fun failedRenameRemovesTmp() {
+        File(tmp.root, "config.json/x").mkdirs() // a non-empty directory cannot be renamed over
+        assertThrows(java.io.IOException::class.java) { ConfigStore(tmp.root).save(Config()) }
+        assertFalse(File(tmp.root, "config.json.tmp").exists())
     }
 
     @Test fun newerVersionFallsBackAndIsKept() {

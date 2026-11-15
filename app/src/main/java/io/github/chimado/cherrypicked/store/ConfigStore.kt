@@ -1,6 +1,7 @@
 package io.github.chimado.cherrypicked.store
 
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 
 class ConfigStore(private val dir: File) {
@@ -22,9 +23,17 @@ class ConfigStore(private val dir: File) {
         try { file.copyTo(File(dir, "config.json.bad"), overwrite = true) } catch (_: IOException) {}
     }
 
-    fun save(c: Config) {
-        val tmp = File(dir, "config.json.tmp")
-        tmp.writeText(c.toJson())
-        if (!tmp.renameTo(file)) throw IOException("rename failed")
+    fun save(c: Config) = file.writeDurably(c.toJson())
+}
+
+/** Writes via `<name>.tmp`, fsyncs it, then renames over this file, so a power cut leaves the old or the new content. */
+fun File.writeDurably(text: String) {
+    val tmp = File(parentFile, "$name.tmp")
+    try {
+        FileOutputStream(tmp).use { it.write(text.toByteArray()); it.fd.sync() }
+        if (!tmp.renameTo(this)) throw IOException("rename failed")
+    } catch (e: IOException) {
+        tmp.delete()
+        throw e
     }
 }

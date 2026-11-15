@@ -1,5 +1,6 @@
 package io.github.chimado.cherrypicked.rank
 
+import io.github.chimado.cherrypicked.store.writeDurably
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -30,9 +31,7 @@ class UsageLedger(private val file: File) {
         val o = JSONObject()
         m.forEach { (k, v) -> o.put(k, JSONArray(v)) }
         try {
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(o.toString())
-            if (!tmp.renameTo(file)) throw IOException("rename failed")
+            file.writeDurably(o.toString())
         } catch (_: IOException) {
             // best-effort data: losing one launch must not break launching
         }
