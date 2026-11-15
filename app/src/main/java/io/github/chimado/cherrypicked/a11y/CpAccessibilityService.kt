@@ -24,7 +24,6 @@ import io.github.chimado.cherrypicked.keys.Remap
 import io.github.chimado.cherrypicked.keys.RemapEngine
 import io.github.chimado.cherrypicked.keys.encode
 import io.github.chimado.cherrypicked.panel.PanelRoute
-import io.github.chimado.cherrypicked.panel.QuickPanel
 import io.github.chimado.cherrypicked.panel.panelRoute
 import io.github.chimado.cherrypicked.store.ConfigStore
 import io.github.chimado.cherrypicked.store.writeDurably
@@ -42,8 +41,13 @@ class CpAccessibilityService : AccessibilityService() {
     private val store by lazy { ConfigStore(filesDir) } // caches by config.json lastModified
     private var remaps: List<Remap> = emptyList() // identity check only: reload when the store hands back a new list
     private val engine = RemapEngine(emptyList())
-    private val runner: ActionRunner by lazy { ActionRunner(this, ::cycleSleepTimer) { panel.toggle() } }
-    private val panel: QuickPanel by lazy { QuickPanel(this, { runner.run(it) }) { sleepEndMs } }
+    private val runner: ActionRunner by lazy { ActionRunner(this, ::cycleSleepTimer) { overlay().togglePanel() } }
+    private val inProcess by lazy { InProcessOverlay(this, handler, { runner.run(it) }) { sleepEndMs } }
+    private val remoteLazy = lazy { RemoteOverlay(this, handler, { runner.run(it) }, { sleepEndMs }, inProcess) }
+    private val remote by remoteLazy
+    /** The overlay last used; routeKey asks it whether the panel is open. */
+    private var current: Overlay? = null
+    private var fallbackLogged = false
     private val engineTimer = Runnable { handle(engine.onTimer(SystemClock.uptimeMillis())) }
     private val testHook = TestHook(handler, { runner.run(it) }) { code, down, repeat, downTime ->
         Log.i("CP", "test feed key=$code down=$down repeat=$repeat consume=${routeKey(code, down, repeat, false, downTime)}")
@@ -52,7 +56,6 @@ class CpAccessibilityService : AccessibilityService() {
     /** Wall-clock end of the running sleep timer, or null. Read by the quick panel (same process). */
     var sleepEndMs: Long? = null
         private set
-    private val notice by lazy { Notice(this, handler) }
     private val sleepFile by lazy { File(filesDir, "sleep_timer") }
     private val sleepFire = Runnable {
         Log.i("CP", "sleep fire")
@@ -75,7 +78,20 @@ class CpAccessibilityService : AccessibilityService() {
         saveSleep(end)
         Log.i("CP", if (end == null) "sleep off" else "sleep set end=$end (${(end - now) / 60_000} min)")
         val msg = if (end == null) "Sleep timer off" else "Sleep in ${(end - now) / 60_000} min"
-        if (!panel.isOpen()) notice.show(msg) // the open panel's row shows it instead
+        val o = overlay()
+        o.sleepChanged(end)
+        if (!o.panelOpen) o.showNotice(msg) // the open panel's row shows it instead
+    }
+
+    /** Picked on each use (the permission can change), but never switched while the panel is open. */
+    private fun overlay(): Overlay {
+        current?.let { if (it.panelOpen) return it }
+        val o = if (Settings.canDrawOverlays(this) && !remote.failed) remote else {
+            if (!fallbackLogged) { Log.i("CP", "overlay in-process (no permission)"); fallbackLogged = true }
+            inProcess
+        }
+        current = o
+        return o
     }
 
     private fun restoreSleep() {
@@ -98,7 +114,7 @@ class CpAccessibilityService : AccessibilityService() {
     private val screenRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             Log.i("CP", "${i.action?.substringAfterLast('.')} pid=${Process.myPid()} t=${SystemClock.elapsedRealtime()}")
-            if (i.action == Intent.ACTION_SCREEN_OFF) panel.close()
+            if (i.action == Intent.ACTION_SCREEN_OFF) current?.closePanel()
             if (i.action == Intent.ACTION_SCREEN_OFF && sleepEndMs != null) { Log.i("CP", "sleep cleared (screen off)"); saveSleep(null) } // uptime pauses in sleep: a stale timer would fire after wake
             handler.removeCallbacks(wakeCheck) // screen off before settling: drop the pending check
             if (i.action == Intent.ACTION_SCREEN_ON) {
@@ -135,6 +151,7 @@ class CpAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         Log.i("CP", "connected pid=${Process.myPid()}")
+        fallbackLogged = false
         bootCheck()
         handler.removeCallbacks(engineTimer)
         engine.reset()
@@ -182,12 +199,14 @@ class CpAccessibilityService : AccessibilityService() {
     }
 
     /** Shared by real keys and [TestHook]: while open the panel owns every key (see [panelRoute]), otherwise the remap engine. */
-    private fun routeKey(code: Int, down: Boolean, repeat: Int, canceled: Boolean, downTime: Long): Boolean =
-        when (panelRoute(panel.isOpen(), downTime, panel.openedAt, code, down)) {
+    private fun routeKey(code: Int, down: Boolean, repeat: Int, canceled: Boolean, downTime: Long): Boolean {
+        val o = current // no permission check per key: a panel can only be open on the overlay that opened it
+        return when (panelRoute(o?.panelOpen == true, downTime, o?.panelOpenedAt ?: 0L, code, down)) {
             PanelRoute.ENGINE -> feedKey(code, down, repeat, canceled)
-            PanelRoute.CLOSE -> { panel.close(); true }
-            PanelRoute.PANEL -> panel.onKey(code, down, canceled)
+            PanelRoute.CLOSE -> { o?.closePanel(); true }
+            PanelRoute.PANEL -> o?.panelKey(code, down, canceled) ?: false
         }
+    }
 
     /** The one remap path. Uptime clock throughout, matching handler.postAtTime. */
     private fun feedKey(code: Int, down: Boolean, repeat: Int, canceled: Boolean): Boolean {
@@ -238,8 +257,9 @@ class CpAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(learnEnd)
         handler.removeCallbacks(engineTimer)
         handler.removeCallbacks(sleepFire) // the saved file stays, so a reconnect re-arms it
-        notice.dismiss()
-        panel.close()
+        if (remoteLazy.isInitialized()) remote.release() // unbinds :ui
+        current?.release()
+        current = null
         testHook.cancel()
         engine.reset()
         learning = false
