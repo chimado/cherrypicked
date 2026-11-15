@@ -5,6 +5,8 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.LayerDrawable
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.util.TypedValue
@@ -21,6 +23,7 @@ import io.github.chimado.cherrypicked.setup.SetupActivity
 import io.github.chimado.cherrypicked.timer.SleepTimer
 
 private const val FOCUS_BG = 0x33E0233F // Setup's focus tint
+private const val IDLE_MS = 15_000L // closes itself after this long without a panel key
 
 internal fun sleepLabel(endMs: Long?, nowMs: Long): String {
     val left = SleepTimer.remainingMs(endMs, nowMs)?.takeIf { it > 0 } ?: return "Sleep timer: Off" // expired-but-unfired reads Off
@@ -29,9 +32,12 @@ internal fun sleepLabel(endMs: Long?, nowMs: Long): String {
 
 enum class PanelRoute { ENGINE, CLOSE, PANEL }
 
+/** The panel's own keys: D-pad, OK/Enter, Back, Home. Everything else (volume, mute, media, channels) stays with the engine. */
+private val PANEL_KEYS = setOf(19, 20, 21, 22, 23, 66, 160, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_HOME)
+
 /** Where a key goes. The press that opened the panel (down before [openedAt]) stays with the engine so it sees its UP. */
 fun panelRoute(open: Boolean, downTime: Long, openedAt: Long, code: Int, down: Boolean): PanelRoute = when {
-    !open || downTime < openedAt -> PanelRoute.ENGINE
+    !open || downTime < openedAt || code !in PANEL_KEYS -> PanelRoute.ENGINE
     !down && (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_HOME) -> PanelRoute.CLOSE
     else -> PanelRoute.PANEL
 }
@@ -51,6 +57,8 @@ class QuickPanel(
     private var rows: List<Row> = emptyList()
     private var sel = 0
     private var w = 0
+    private val handler = Handler(Looper.getMainLooper())
+    private val idle = Runnable { Log.i("CP", "panel timeout"); close() } // posted only while open
 
     /** Uptime when opened; a press that began earlier (the long-press Home that opened it) stays with the remap engine. */
     var openedAt = 0L
@@ -72,35 +80,36 @@ class QuickPanel(
             })
         }
         sel = 0
-        val regular = Fonts.regular(svc)
-        val v = LinearLayout(svc).apply {
-            orientation = LinearLayout.VERTICAL
-            val p = Theme.vw(2f, w).toInt()
-            setPadding(0, p, 0, p)
-            setBackgroundColor((0xF5 shl 24) or (Theme.BG_TOP and 0xFFFFFF)) // 96% alpha
-            for (r in rows) addView(TextView(svc).apply {
-                typeface = regular
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, Theme.vw(1.6f, w))
-                val px = Theme.vw(1.5f, w).toInt(); val py = Theme.vw(0.9f, w).toInt()
-                setPadding(px, py, px, py)
-            })
-        }
         val lp = WindowManager.LayoutParams(
             Theme.vw(28f, w).toInt(), WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.END or Gravity.TOP }
-        try {
-            svc.getSystemService(WindowManager::class.java).addView(v, lp)
+        val v = try { // a font or window failure logs instead of killing :a11y
+            val regular = Fonts.regular(svc)
+            LinearLayout(svc).apply {
+                orientation = LinearLayout.VERTICAL
+                val p = Theme.vw(2f, w).toInt()
+                setPadding(0, p, 0, p)
+                setBackgroundColor(Theme.BG_TOP) // opaque: the app's clock must not show through
+                for (r in rows) addView(TextView(svc).apply {
+                    typeface = regular
+                    setTextSize(TypedValue.COMPLEX_UNIT_PX, Theme.vw(1.6f, w))
+                    val px = Theme.vw(1.5f, w).toInt(); val py = Theme.vw(0.9f, w).toInt()
+                    setPadding(px, py, px, py)
+                })
+            }.also { svc.getSystemService(WindowManager::class.java).addView(it, lp) }
         } catch (e: RuntimeException) { Log.w("CP", "panel not shown", e); rows = emptyList(); return }
         list = v
         openedAt = SystemClock.uptimeMillis()
         Log.i("CP", "panel open")
         refresh(-1)
+        handler.postDelayed(idle, IDLE_MS)
     }
 
     fun close() {
+        handler.removeCallbacks(idle)
         val v = list ?: return
         list = null
         rows = emptyList()
@@ -108,8 +117,10 @@ class QuickPanel(
         Log.i("CP", "panel close")
     }
 
-    /** Called for every key while open; always consumes. Up/Down move on press (and repeat); OK acts on release. */
+    /** Called for each of the panel's keys while open (see [panelRoute]); always consumes. Up/Down move on press (and repeat); OK acts on release. */
     fun onKey(code: Int, down: Boolean, canceled: Boolean): Boolean {
+        handler.removeCallbacks(idle)
+        handler.postDelayed(idle, IDLE_MS)
         when (code) {
             KeyEvent.KEYCODE_DPAD_UP -> if (down) move(-1)
             KeyEvent.KEYCODE_DPAD_DOWN -> if (down) move(1)

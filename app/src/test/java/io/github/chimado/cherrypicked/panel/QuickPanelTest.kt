@@ -39,4 +39,13 @@ class QuickPanelTest {
         assertEquals(PanelRoute.PANEL, panelRoute(true, 300, 100, down, true))
         assertEquals(PanelRoute.PANEL, panelRoute(true, 300, 100, KeyEvent.KEYCODE_DPAD_CENTER, false))
     }
+
+    @Test fun nonPanelKeysGoToEngineWhileOpen() { // volume, mute, media, channel keep working
+        for (k in listOf(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_MUTE, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_MENU))
+            for (d in listOf(true, false)) assertEquals("$k $d", PanelRoute.ENGINE, panelRoute(true, 300, 100, k, d))
+    }
+
+    @Test fun panelKeysStayWithPanel() {
+        for (k in listOf(19, 20, 21, 22, 23, 66, 160)) assertEquals("$k", PanelRoute.PANEL, panelRoute(true, 300, 100, k, true))
+    }
 }
