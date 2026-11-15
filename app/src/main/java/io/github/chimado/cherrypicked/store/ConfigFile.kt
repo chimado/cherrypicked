@@ -1,5 +1,6 @@
 package io.github.chimado.cherrypicked.store
 
+import io.github.chimado.cherrypicked.setup.canRemap
 import io.github.chimado.cherrypicked.setup.hasWayHome
 
 const val CONFIG_FILE_NAME = "cherrypicked.json"
@@ -14,7 +15,11 @@ sealed class ImportCheck {
 fun checkImport(text: String, installed: Set<String>, label: (String) -> String): ImportCheck {
     val c = try { Config.fromJson(text) } catch (e: ConfigFormatException) {
         return ImportCheck.Refused(if (e.message?.contains("newer") == true) "This file is from a newer Cherrypicked" else "This file isn't a Cherrypicked setup")
+    } catch (_: StackOverflowError) { // Android's org.json recurses without a depth limit
+        return ImportCheck.Refused("This file isn't a Cherrypicked setup")
     }
+    // Only remaps Setup itself could make: the engine ignores nav keys, so a Home/QuickPanel remap there isn't a way home.
+    if (!c.remaps.all { canRemap(it.keyCode, it.press, c.remaps) }) return ImportCheck.Refused("This file has button settings Cherrypicked can't use")
     if (!hasWayHome(c.remaps)) return ImportCheck.Refused("This setup leaves no way back to Cherrypicked")
     fun name(e: String) = label(e) + if (!e.startsWith("input:") && e !in installed) " (not installed)" else ""
     return ImportCheck.Ok(c, listOf(

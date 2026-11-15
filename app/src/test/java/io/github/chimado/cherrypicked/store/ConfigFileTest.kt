@@ -40,4 +40,17 @@ class ConfigFileTest {
         val c = Config(remaps = listOf(Remap(3, Press.SINGLE, Action.Nothing)))
         assertEquals(ImportCheck.Refused("This setup leaves no way back to Cherrypicked"), checkImport(c.toJson(), emptySet(), ::label))
     }
+
+    @Test fun refusesRemapsSetupCouldNotMake() {
+        // OK-long would satisfy the way-home check, but the engine ignores nav keys: Home would be dead.
+        val navLong = Config(remaps = listOf(Remap(3, Press.SINGLE, Action.Nothing), Remap(23, Press.LONG, Action.QuickPanel)))
+        assertEquals(ImportCheck.Refused("This file has button settings Cherrypicked can't use"), checkImport(navLong.toJson(), emptySet(), ::label))
+        val longWithoutSingle = Config(remaps = listOf(Remap(183, Press.LONG, Action.Home)))
+        assertEquals(ImportCheck.Refused("This file has button settings Cherrypicked can't use"), checkImport(longWithoutSingle.toJson(), emptySet(), ::label))
+    }
+
+    @Test fun refusesDeepNesting() {
+        val deep = "{\"a\":" + "[".repeat(200_000) + "]".repeat(200_000) + "}"
+        assertEquals(ImportCheck.Refused("This file isn't a Cherrypicked setup"), checkImport(deep, emptySet(), ::label))
+    }
 }

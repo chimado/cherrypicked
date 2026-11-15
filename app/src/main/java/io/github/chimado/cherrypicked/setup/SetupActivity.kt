@@ -182,7 +182,7 @@ class SetupActivity : Activity() {
         Sub.PickMain -> listOf(Row("Main app")) +
             apps.map { a -> Row(a.label, "pick:${a.pkg}") { edit { it.setMainApp(a.pkg) }; sub = null } }
         is Sub.ImportConfirm -> listOf(Row("Import this setup?")) + s.check.summary.map { Row(it) } + listOf(
-            Row("Apply", "apply") { edit { s.check.config }; if (note == null) backupNote = "Setup imported"; sub = null },
+            Row("Apply", "apply") { edit { s.check.config }; backupNote = note ?: "Setup imported"; sub = null },
             Row("Cancel", "cancel") { sub = null },
         )
         Sub.Hidden -> listOf(Row("Hidden apps")) +
