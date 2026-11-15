@@ -85,16 +85,19 @@ class AppCatalog(private val ctx: Context) {
     /** Fallback/synthetic tile art: [icon] centred on a #2a2b30 card with corner radius [r] and [label] underneath (or just the label). */
     fun card(label: String, icon: Drawable? = null, r: Float = 0f): Drawable = CardDrawable(label, icon, font, r)
 
-    fun launch(pkg: String): Boolean {
-        val i = intentFor(pkg) ?: return false
-        return try {
-            ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            true
-        } catch (_: ActivityNotFoundException) {
-            false
-        } catch (_: SecurityException) {
-            false
-        }
+    fun launch(pkg: String): Boolean = tryLaunch(intentFor(pkg)) { ctx.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+/** Starts [intent] if there is one. No intent (app gone) or a refused start: false, and nothing else happens. */
+internal fun <T : Any> tryLaunch(intent: T?, start: (T) -> Unit): Boolean {
+    val i = intent ?: return false
+    return try {
+        start(i)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    } catch (_: SecurityException) {
+        false
     }
 }
 
