@@ -1,0 +1,59 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Appearance presets</title>
+<!-- Reference mockup approved by the owner on 2026-11-15: preset names, colours and pattern geometry. -->
+<style>:root{--text-primary:#e9eaee;--text-secondary:#9a9ca3;--border:#333;--border-strong:#555;--border-accent:#e0233f;--radius:8px}
+body{background:#111214;color:var(--text-primary);font-family:sans-serif;max-width:960px;margin:24px auto;padding:0 16px}button{cursor:pointer}</style>
+<h2 style="display:none">Mockup of the Cherrypicked home screen with twelve background patterns, sixteen accent colours and twelve base colours including light and earthy ones.</h2>
+<div id="big" style="border-radius:12px;overflow:hidden;line-height:0;margin-bottom:12px"></div>
+<div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px">Accent <span id="accn" style="color:var(--text-primary)"></span></div>
+<div id="acc" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
+<div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px">Base <span id="basen" style="color:var(--text-primary)"></span></div>
+<div id="base" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>
+<div id="grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px"></div>
+<script>
+const W=960,H=540;
+const ACC={Cherry:'#e0233f',Coral:'#f2664a',Tangerine:'#f58a1f',Amber:'#f2a33a',Gold:'#d9b433',Lime:'#9bc53d',Emerald:'#2fae6b',Teal:'#26b3a1',Cyan:'#2aa9d6',Blue:'#4a8df0',Indigo:'#6a6cf0',Violet:'#9b6cf2',Magenta:'#d64fb0',Terracotta:'#c8643f',Rust:'#b5502b',Ochre:'#c99a2e',Olive:'#8a9a3b',Sage:'#8fae8b',Clay:'#b97a63',Sand:'#cdb48a'};
+const BASE={Graphite:['#17181b','#0d0e10'],Midnight:['#131927','#0a0d15'],Slate:['#1b2026','#0f1216'],Plum:['#1c1620','#0e0b11'],Forest:['#141b18','#0a0f0d'],Moss:['#1b1d14','#0e100a'],Espresso:['#1e1814','#0f0c0a'],Umber:['#241a14','#120d0a'],Paper:['#f4f1ea','#e6e1d6'],Fog:['#eceef1','#dadde2'],Linen:['#efe6d8','#e0d3bf'],Sandstone:['#e6d6bf','#d4bf9f'],Sagebrush:['#e3e7dc','#cfd6c6'],Terracotta:['#ecd6c9','#dcbca9']};
+const KINDS=['Plain','Rings','Lines','Waves','Dots','Glow','Contours','Grid','Hexagons','Facets','Arcs','Horizon','Ripples','Chevrons','Blocks','Pinstripe'];
+let st={kind:'Rings',acc:'Cherry',base:'Graphite'};
+const lum=h=>{const n=parseInt(h.slice(1),16);return((n>>16)*0.3+((n>>8)&255)*0.59+(n&255)*0.11)/255;};
+function rnd(s){return()=>{s=(s*16807)%2147483647;return s/2147483647;};}
+function pattern(k,a,id,light){
+ const ink=light?'rgba(0,0,0,':'rgba(255,255,255,',f=light?1.6:1;const o=v=>ink+(v*f).toFixed(3)+')';let s='';
+ const ln=(x1,y1,x2,y2,c,w=1.5)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${w}"/>`;
+ if(k==='Rings'){for(let r=90;r<1300;r+=70)s+=`<circle cx="${W*.86}" cy="${H*1.12}" r="${r}" fill="none" stroke="${r===510?a:o(.035)}" stroke-opacity="${r===510?0.25:1}" stroke-width="${r===510?2:1.5}"/>`;}
+ if(k==='Lines'){for(let x=-H;x<W;x+=26){const ac=x>-260&&x<-180;s+=`<line x1="${x}" y1="${H}" x2="${x+H}" y2="0" stroke="${ac?a:o(.028)}" stroke-opacity="${ac?0.2:1}" stroke-width="1.5"/>`;}}
+ if(k==='Waves'){const wave=(y,amp,ph)=>{let d=`M0 ${H} L0 ${y}`;for(let x=0;x<=W;x+=20)d+=` L${x} ${(y+Math.sin(x/150+ph)*amp).toFixed(1)}`;return d+` L${W} ${H} Z`;};
+  s+=`<path d="${wave(H*.70,22,0)}" fill="${o(.025)}"/><path d="${wave(H*.80,18,2)}" fill="${o(.03)}"/><path d="${wave(H*.90,14,4)}" fill="${a}" fill-opacity="0.13"/>`;}
+ if(k==='Dots'){for(let y=14;y<H;y+=26)for(let x=14;x<W;x+=26){const q=Math.max(0,1-Math.hypot(x-W*.9,y-H*.08)/420);s+=q>0.05?`<circle cx="${x}" cy="${y}" r="1.4" fill="${a}" fill-opacity="${(0.06+q*0.3).toFixed(2)}"/>`:`<circle cx="${x}" cy="${y}" r="1.4" fill="${o(.05)}"/>`;}}
+ if(k==='Glow'){s+=`<defs><radialGradient id="g${id}" cx="0.1" cy="1.05" r="0.9"><stop offset="0" stop-color="${a}" stop-opacity="0.24"/><stop offset="1" stop-color="${a}" stop-opacity="0"/></radialGradient></defs><rect width="${W}" height="${H}" fill="url(#g${id})"/>`;}
+ if(k==='Contours'){for(let i=1;i<16;i++){const r0=i*48;let d='';for(let t=0;t<=64;t++){const th=t/64*Math.PI*2,r=r0+Math.sin(th*3+i*.7)*10+Math.cos(th*5-i)*6;d+=(t?'L':'M')+(W*.12+Math.cos(th)*r*1.3).toFixed(1)+' '+(H*.15+Math.sin(th)*r).toFixed(1);}s+=`<path d="${d}Z" fill="none" stroke="${i===4?a:o(.035)}" stroke-opacity="${i===4?0.25:1}" stroke-width="1.5"/>`;}}
+ if(k==='Grid'){for(let x=0;x<W;x+=48)s+=ln(x,0,x,H,o(.025),1);for(let y=0;y<H;y+=48)s+=ln(0,y,W,y,o(.025),1);for(const[x,y]of[[48*17,48*1],[48*18,48*1],[48*18,48*2]])s+=`<rect x="${x}" y="${y}" width="48" height="48" fill="${a}" fill-opacity="0.12"/>`;}
+ if(k==='Hexagons'){const r=30,hw=r*Math.sqrt(3);for(let row=-1;row<H/(r*1.5)+1;row++)for(let c=-1;c<W/hw+1;c++){const cx=c*hw+(row%2?hw/2:0),cy=row*r*1.5;let d='';for(let j=0;j<6;j++){const t=Math.PI/3*j+Math.PI/6;d+=(j?'L':'M')+(cx+Math.cos(t)*r).toFixed(1)+' '+(cy+Math.sin(t)*r).toFixed(1);}const ac=(row===9&&c===2)||(row===10&&c===1);s+=`<path d="${d}Z" fill="${ac?a:'none'}" fill-opacity="0.14" stroke="${o(.035)}" stroke-width="1.2"/>`;}}
+ if(k==='Facets'){const R=rnd(7);const cols=9,rows=5,cw=W/cols,rh=H/rows;for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){const x=i*cw,y=j*rh;const ac=i===8&&j===0;s+=`<path d="M${x} ${y}L${x+cw} ${y}L${x} ${y+rh}Z" fill="${ac?a:light?'#000':'#fff'}" fill-opacity="${ac?0.14:(R()*0.03*f).toFixed(3)}"/><path d="M${x+cw} ${y}L${x+cw} ${y+rh}L${x} ${y+rh}Z" fill="${light?'#000':'#fff'}" fill-opacity="${(R()*0.03*f).toFixed(3)}"/>`;}}
+ if(k==='Arcs'){const R=rnd(3),c=60;for(let x=0;x<W;x+=c)for(let y=0;y<H;y+=c){const fl=R()>.5;const p=fl?`M${x+c/2} ${y}A${c/2} ${c/2} 0 0 1 ${x+c} ${y+c/2}M${x} ${y+c/2}A${c/2} ${c/2} 0 0 0 ${x+c/2} ${y+c}`:`M${x+c/2} ${y}A${c/2} ${c/2} 0 0 0 ${x} ${y+c/2}M${x+c} ${y+c/2}A${c/2} ${c/2} 0 0 1 ${x+c/2} ${y+c}`;const ac=x<c*2&&y>=H-c*2;s+=`<path d="${p}" fill="none" stroke="${ac?a:o(.035)}" stroke-opacity="${ac?0.3:1}" stroke-width="1.5"/>`;}}
+ if(k==='Horizon'){s+=`<circle cx="${W*.5}" cy="${H*.98}" r="150" fill="${a}" fill-opacity="0.13"/>`;let y=H*.62,g=26;while(y<H){s+=ln(0,y,W,y,o(.04),1.5);g*=.82;y+=Math.max(g,5);}}
+ if(k==='Ripples'){for(const[cx,cy,n]of[[W*.08,H*.1,7],[W*.92,H*.92,9]])for(let i=1;i<=n;i++)s+=`<circle cx="${cx}" cy="${cy}" r="${i*34}" fill="none" stroke="${i===3&&cx<W/2?a:o(.035)}" stroke-opacity="${i===3&&cx<W/2?0.3:1}" stroke-width="1.5"/>`;}
+ if(k==='Chevrons'){for(let y=-40;y<H+40;y+=30){let d='';for(let x=0;x<=W;x+=60)d+=(x?'L':'M')+x+' '+(y+((x/60)%2?18:0));const ac=y>H-110&&y<H-60;s+=`<path d="${d}" fill="none" stroke="${ac?a:o(.03)}" stroke-opacity="${ac?0.2:1}" stroke-width="1.5"/>`;}}
+ if(k==='Blocks'){const R=rnd(11);for(let i=0;i<22;i++){const w=60+R()*220,h=40+R()*160,x=R()*W-40,y=R()*H-40;s+=`<rect x="${x.toFixed(0)}" y="${y.toFixed(0)}" width="${w.toFixed(0)}" height="${h.toFixed(0)}" rx="10" fill="${light?'#000':'#fff'}" fill-opacity="${(0.012*f).toFixed(3)}"/>`;}s+=`<rect x="${W*.78}" y="${H*.82}" width="170" height="120" rx="12" fill="${a}" fill-opacity="0.13"/>`;}
+ if(k==='Pinstripe'){for(let x=12;x<W;x+=12)s+=ln(x,0,x,H,o(.022),1);s+=`<rect x="0" y="${H-6}" width="${W}" height="6" fill="${a}" fill-opacity="0.5"/>`;}
+ return s;}
+function screen(k,id){
+ const a=ACC[st.acc],[t,b]=BASE[st.base],light=lum(t)>0.6;
+ const txt=light?'rgba(29,30,34,.55)':'rgba(233,234,238,.5)';
+ const tw=211,th=119,gap=26,x0=(W-(tw*4+gap*3))/2,y0=H*.40;
+ let tiles='';const tc=['#3a3f4a','#2f3a36','#40343a','#333847'];
+ for(let i=0;i<4;i++){const x=x0+i*(tw+gap);const fo=i===0;tiles+=`<g transform="translate(${x+tw/2} ${y0+th/2}) scale(${fo?1.07:1}) translate(${-tw/2} ${-th/2})">${fo?`<rect x="-6" y="-6" width="${tw+12}" height="${th+12}" rx="24" fill="${a}" opacity="0.2"/>`:''}<rect width="${tw}" height="${th}" rx="19" fill="${tc[i]}"/>${fo?`<rect width="${tw}" height="${th}" rx="19" fill="none" stroke="${a}" stroke-width="3.4"/>`:''}</g>`;}
+ const sw=150,sh=84,sx0=(W-(sw*5+18*4))/2;
+ for(let i=0;i<5;i++)tiles+=`<rect x="${sx0+i*(sw+18)}" y="${H*.72}" width="${sw}" height="${sh}" rx="13" fill="#3a3d45" opacity="0.35"/>`;
+ return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><defs><linearGradient id="bg${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#bg${id})"/>${pattern(k,a,id,light)}${tiles}<text x="${W*.95}" y="${H*.06+32}" text-anchor="end" font-size="33" font-weight="200" fill="${a}" font-family="Inter,sans-serif">21:47</text><text x="${W*.95}" y="${H*.13+16}" text-anchor="end" font-size="13" fill="${txt}" font-family="Inter,sans-serif">Sunday 15 November</text></svg>`;}
+function render(){
+ document.getElementById('big').innerHTML=screen(st.kind,'big');
+ document.getElementById('grid').innerHTML=KINDS.map((k,i)=>`<button data-k="${k}" style="padding:0;border-radius:var(--radius);overflow:hidden;border:${k===st.kind?'2px solid var(--border-accent)':'0.5px solid var(--border)'};background:none;height:auto;display:block;text-align:left"><div style="line-height:0">${screen(k,'t'+i)}</div><div style="font-size:12px;padding:4px 6px;color:var(--text-secondary)">${k}</div></button>`).join('');
+ document.querySelectorAll('[data-k]').forEach(e=>e.onclick=()=>{st.kind=e.dataset.k;render();});
+ sw('acc',ACC,'acc',v=>v);sw('base',BASE,'base',v=>v[0]);
+ document.getElementById('accn').textContent=st.acc;document.getElementById('basen').textContent=st.base;}
+function sw(el,map,key,col){document.getElementById(el).innerHTML=Object.keys(map).map(n=>`<button aria-label="${n}" title="${n}" data-s="${n}" style="width:24px;height:24px;min-width:0;padding:0;border-radius:50%;background:${col(map[n])};border:${st[key]===n?'2px solid var(--text-primary)':'0.5px solid var(--border-strong)'}"></button>`).join('');
+ document.querySelectorAll('#'+el+' [data-s]').forEach(e=>e.onclick=()=>{st[key]=e.dataset.s;render();});}
+render();
+</script>

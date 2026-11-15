@@ -201,7 +201,14 @@ class HomeActivity : Activity() {
     /** Reloads config, apps and scores; rebuilds the views only when what they show changed (or [force]). */
     private fun refresh(force: Boolean, reload: Boolean = true) {
         if (reload) config = store.load()
-        if (Theme.load(config)) { recreate(); return } // appearance changed in Setup
+        // Appearance changed in Setup: recolour in place (recreate() would hold a second set of tile bitmaps).
+        val recolour = Theme.load(config)
+        if (recolour) {
+            (body.parent as View).background = PatternDrawable(Theme.palette)
+            clock.setTextColor(Theme.ACCENT)
+            date.setTextColor(Theme.FAINT)
+            hint.setTextColor(Theme.FAINT)
+        }
         val inputs = InputCatalog(this).inputs() // one cheap binder call; never cached, so renames/hot-plug show up
         val apps = apps ?: catalog.apps().also { apps = it }
         val now = System.currentTimeMillis()
@@ -211,7 +218,7 @@ class HomeActivity : Activity() {
         val ex = excluded ?: (packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
             .map { it.activityInfo.packageName }.toSet() + tvInputPackages(this)).also { excluded = it }
         val next = HomeModel.build(apps, config, scores, homeBroken = !HomeHealth.isEnabled(this), inputs = inputs) to Suggester.next(apps, config, scores, ex)
-        if (force || next != shown) {
+        if (force || recolour || next != shown) { // tiles take the accent when built
             shown = next
             build(next.first, next.second)
         }
