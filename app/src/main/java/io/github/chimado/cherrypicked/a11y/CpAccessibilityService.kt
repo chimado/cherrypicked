@@ -18,6 +18,7 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import io.github.chimado.cherrypicked.apps.AppCatalog
 import io.github.chimado.cherrypicked.home.HomeActivity
+import io.github.chimado.cherrypicked.keys.KeyNames
 import io.github.chimado.cherrypicked.store.ConfigStore
 import java.io.File
 import java.io.IOException
@@ -42,6 +43,25 @@ class CpAccessibilityService : AccessibilityService() {
         }
     }
 
+    private var learning = false
+    private var learnedDown = -1 // the learned key whose ACTION_UP is still to be consumed
+
+    private val learnEnd = Runnable { finishLearn(-1) }
+
+    private val learnRx = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            if (learning) return // one session at a time
+            learning = true
+            handler.postDelayed(learnEnd, KeyLearn.WINDOW_MS)
+        }
+    }
+
+    private fun finishLearn(key: Int) {
+        learning = false
+        handler.removeCallbacks(learnEnd)
+        sendBroadcast(Intent(KeyLearn.ACTION_RESULT).setPackage(packageName).putExtra(KeyLearn.EXTRA_KEY, key))
+    }
+
     override fun onServiceConnected() {
         Log.i("CP", "connected pid=${Process.myPid()}")
         bootCheck()
@@ -51,6 +71,7 @@ class CpAccessibilityService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }, RECEIVER_NOT_EXPORTED)
+        registerReceiver(learnRx, IntentFilter(KeyLearn.ACTION_START), RECEIVER_NOT_EXPORTED)
         registered = true
     }
 
@@ -66,6 +87,17 @@ class CpAccessibilityService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (learning && event.action == KeyEvent.ACTION_DOWN) {
+            Log.i("CP", "learn key=${event.keyCode} ${KeyNames.label(event.keyCode)}")
+            learnedDown = event.keyCode
+            finishLearn(event.keyCode)
+            return true
+        }
+        if (learnedDown == event.keyCode) { // key repeats, then the UP, of the learned press
+            if (event.action == KeyEvent.ACTION_UP) learnedDown = -1
+            return true
+        }
+        if (learning) { Log.i("CP", "learn key=${event.keyCode} ${KeyNames.label(event.keyCode)}"); return true }
         if (!HomeKeyPolicy.intercept(event.keyCode)) return false
         if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) {
             startActivity(Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -99,7 +131,10 @@ class CpAccessibilityService : AccessibilityService() {
 
     private fun stop() {
         handler.removeCallbacks(wakeCheck)
-        if (registered) { unregisterReceiver(screenRx); registered = false }
+        handler.removeCallbacks(learnEnd)
+        learning = false
+        learnedDown = -1
+        if (registered) { unregisterReceiver(screenRx); unregisterReceiver(learnRx); registered = false }
     }
 }
 

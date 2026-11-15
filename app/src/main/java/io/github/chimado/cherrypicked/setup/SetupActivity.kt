@@ -3,6 +3,9 @@ package io.github.chimado.cherrypicked.setup
 import android.app.Activity
 import android.app.AppOpsManager
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.content.Intent
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -15,10 +18,12 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
+import io.github.chimado.cherrypicked.a11y.KeyLearn
 import io.github.chimado.cherrypicked.apps.AppCatalog
 import io.github.chimado.cherrypicked.health.HomeHealth
 import io.github.chimado.cherrypicked.home.AppEntry
 import io.github.chimado.cherrypicked.home.HomeModel
+import io.github.chimado.cherrypicked.keys.KeyNames
 import io.github.chimado.cherrypicked.store.Config
 import io.github.chimado.cherrypicked.store.ConfigStore
 import java.io.IOException
@@ -53,6 +58,15 @@ class SetupActivity : Activity() {
     private var note: String? = null
     private var usageNote = false
     private var started = false
+    private var learnText: String? = null
+
+    private val learnRx = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            val k = i.getIntExtra(KeyLearn.EXTRA_KEY, -1)
+            learnText = if (k < 0) "No button seen" else "You pressed: ${KeyNames.label(k)} ($k)"
+            render(focusedId(), null)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,6 +82,7 @@ class SetupActivity : Activity() {
             addView(list)
         }
         setContentView(scroll)
+        registerReceiver(learnRx, IntentFilter(KeyLearn.ACTION_RESULT), RECEIVER_NOT_EXPORTED)
         render(null, intent.getStringExtra("section"))
     }
 
@@ -86,6 +101,7 @@ class SetupActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterReceiver(learnRx)
         Process.killProcess(Process.myPid()) // alone in :setup; also covers leaving with Home, not only finish()
     }
 
@@ -134,6 +150,11 @@ class SetupActivity : Activity() {
             add(Row("2. If that is greyed out, run from a computer: adb shell settings put secure enabled_accessibility_services <current list>:$PKG/.a11y.CpAccessibilityService"))
             add(Row("3. On TCL TVs also allow auto-start: adb shell appops set $PKG APP_AUTO_START allow"))
         }
+        add(if (!HomeHealth.isEnabled(this@SetupActivity)) Row("Button test: Needs the Home button connected")
+            else Row(learnText ?: "Button test", "learn") {
+                learnText = "Press any button on your remote…"
+                sendBroadcast(Intent(KeyLearn.ACTION_START).setPackage(PKG))
+            })
         add(Row("Open accessibility settings", "a11y") { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) })
 
         add(Row("Usage access", "#usage"))
