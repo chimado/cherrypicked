@@ -23,6 +23,7 @@ import io.github.chimado.cherrypicked.keys.KeyNames
 import io.github.chimado.cherrypicked.keys.Remap
 import io.github.chimado.cherrypicked.keys.RemapEngine
 import io.github.chimado.cherrypicked.keys.encode
+import io.github.chimado.cherrypicked.panel.QuickPanel
 import io.github.chimado.cherrypicked.store.ConfigStore
 import io.github.chimado.cherrypicked.store.writeDurably
 import io.github.chimado.cherrypicked.timer.RestoreResult
@@ -39,7 +40,8 @@ class CpAccessibilityService : AccessibilityService() {
     private val store by lazy { ConfigStore(filesDir) } // caches by config.json lastModified
     private var remaps: List<Remap> = emptyList() // identity check only: reload when the store hands back a new list
     private val engine = RemapEngine(emptyList())
-    private val runner by lazy { ActionRunner(this, ::cycleSleepTimer) }
+    private val runner: ActionRunner by lazy { ActionRunner(this, ::cycleSleepTimer) { panel.toggle() } }
+    private val panel: QuickPanel by lazy { QuickPanel(this, { runner.run(it) }) { sleepEndMs } }
     private val engineTimer = Runnable { handle(engine.onTimer(SystemClock.uptimeMillis())) }
     private val testHook = TestHook(handler, { runner.run(it) }) { code, down, repeat ->
         Log.i("CP", "test feed key=$code down=$down repeat=$repeat consume=${feedKey(code, down, repeat, false)}")
@@ -94,6 +96,7 @@ class CpAccessibilityService : AccessibilityService() {
     private val screenRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             Log.i("CP", "${i.action?.substringAfterLast('.')} pid=${Process.myPid()} t=${SystemClock.elapsedRealtime()}")
+            if (i.action == Intent.ACTION_SCREEN_OFF) panel.close()
             if (i.action == Intent.ACTION_SCREEN_OFF && sleepEndMs != null) { Log.i("CP", "sleep cleared (screen off)"); saveSleep(null) } // uptime pauses in sleep: a stale timer would fire after wake
             handler.removeCallbacks(wakeCheck) // screen off before settling: drop the pending check
             if (i.action == Intent.ACTION_SCREEN_ON) {
@@ -172,6 +175,13 @@ class CpAccessibilityService : AccessibilityService() {
             return true
         }
         if (learning) { Log.i("CP", "learn key=${event.keyCode} ${KeyNames.label(event.keyCode)}"); return true }
+        // While open the panel owns every key, except the rest of the press that opened it (the engine must see that UP).
+        if (panel.isOpen() && event.downTime >= panel.openedAt) {
+            val code = event.keyCode
+            if (event.action == KeyEvent.ACTION_UP && (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_HOME)) panel.close()
+            else panel.onKey(event)
+            return true
+        }
         return feedKey(event.keyCode, event.action == KeyEvent.ACTION_DOWN, event.repeatCount, event.isCanceled)
     }
 
@@ -225,6 +235,7 @@ class CpAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(engineTimer)
         handler.removeCallbacks(sleepFire) // the saved file stays, so a reconnect re-arms it
         notice.dismiss()
+        panel.close()
         testHook.cancel()
         engine.reset()
         learning = false
