@@ -58,7 +58,7 @@ private fun pressLabel(p: Press) = p.name.lowercase().replaceFirstChar(Char::upp
 
 /** [id]: a stable focus id for an actionable row, `#key` for a section header (the target of a "section" extra). */
 /** [onSide]: left/right on the row, with -1 or 1 (Appearance choices). */
-private class Row(val text: String, val id: String? = null, val onClick: (() -> Unit)? = null, val onSide: ((Int) -> Unit)? = null) {
+private class Row(val text: String, val id: String? = null, val onSide: ((Int) -> Unit)? = null, val onClick: (() -> Unit)? = null) { // onClick last: rows pass it as a trailing lambda
     val section get() = id?.startsWith("#") == true
 }
 
@@ -155,6 +155,7 @@ class SetupActivity : Activity() {
         config = edit(store.load()) // fresh: Home may have saved since
         note = try { store.save(config); null } catch (_: IOException) { "Couldn't save" }
         if (note == null) sendBroadcast(Intent(KeyLearn.ACTION_CONFIG_CHANGED).setPackage(PKG))
+        if (Theme.load(config)) scroll.background = baseBg() // an appearance change or an import
     }
 
     /** A favorite entry's label: an app package or `input:<id>`. */
@@ -224,8 +225,8 @@ class SetupActivity : Activity() {
         Sub.Appearance -> {
             val p = palette(config)
             fun look(id: String, label: String, change: (Config, Int) -> Config): Row {
-                val step = { d: Int -> edit { change(it, d) }; Theme.load(config); scroll.background = baseBg() }
-                return Row("‹ $label ›", id, { step(1) }, step)
+                val step = { d: Int -> edit { change(it, d) } }
+                return Row("‹ $label ›", id, onSide = step) { step(1) }
             }
             listOf(
                 Row("Appearance"),

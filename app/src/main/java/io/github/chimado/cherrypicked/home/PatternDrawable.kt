@@ -30,7 +30,7 @@ private const val H = 540f
  */
 class PatternDrawable(private val p: Palette) : Drawable() {
     private val bg = Paint()
-    private val paths = LinkedHashMap<Pair<Int, Float>, Path>() // (colour, stroke width; 0 = fill) -> shapes
+    private val paths = ArrayList<Pair<Pair<Int, Float>, Path>>() // (colour, stroke width; 0 = fill) to shapes
     private val paints: List<Pair<Path, Paint>>
     private val glow: Paint?
 
@@ -42,7 +42,14 @@ class PatternDrawable(private val p: Palette) : Drawable() {
     private fun acc(a: Float) = alpha(a) or (p.accent and 0xFFFFFF)
     /** A mark of the ink/fill colour itself (the mockup's `#fff`/`#000` with an opacity that already includes f). */
     private fun mono(a: Float) = alpha(a) or if (p.light) 0 else 0xFFFFFF
-    private fun path(color: Int, width: Float = 0f) = paths.getOrPut(color to width) { Path() }
+    // One draw merges overlaps; the mockup draws each shape on its own, so where shapes overlap (shared hex edges,
+    // stacked blocks) each gets its own Path to blend the same way. Elsewhere same-paint shapes share one Path.
+    private val separate = p.pattern == "Hexagons" || p.pattern == "Blocks"
+    private fun path(color: Int, width: Float = 0f): Path {
+        val k = color to width
+        if (!separate) paths.firstOrNull { it.first == k }?.let { return it.second }
+        return Path().also { paths.add(k to it) }
+    }
     private fun line(c: Int, w: Float, x1: Float, y1: Float, x2: Float, y2: Float) = path(c, w).run { moveTo(x1, y1); lineTo(x2, y2) }
     private fun ring(c: Int, w: Float, cx: Float, cy: Float, r: Float) = path(c, w).addCircle(cx, cy, r, Path.Direction.CW)
 
