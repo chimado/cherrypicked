@@ -22,10 +22,16 @@ class RemapEngineTest {
         val e = RemapEngine(listOf(Remap(OK, Press.SINGLE, app)))
         assertEquals(Decision(false, emptyList()), e.down(UP, 0))
         assertEquals(Decision(false, emptyList()), e.up(UP, 10))
-        // Home and Back with no entries pass through too
-        assertEquals(Decision(false, emptyList()), e.down(HOME, 20))
-        assertEquals(Decision(false, emptyList()), e.up(HOME, 30))
+        // Back with no entries passes through too
+        assertEquals(Decision(false, emptyList()), e.down(BACK, 20))
+        assertEquals(Decision(false, emptyList()), e.up(BACK, 30))
         assertEquals(emptyList<Effect>(), e.onTimer(10_000))
+    }
+
+    @Test fun homeAlwaysMapped() {
+        val e = RemapEngine(emptyList())
+        assertEquals(Decision(true, emptyList()), e.down(HOME, 0))
+        assertEquals(Decision(true, listOf(fire(Action.Home))), e.up(HOME, 80))
     }
 
     @Test fun homeSingleDefaultsToHome() {

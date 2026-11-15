@@ -94,7 +94,8 @@ class RemapEngine(private var remaps: List<Remap>) {
     private fun startPress(keyCode: Int, repeatCount: Int, nowMs: Long, fx: MutableList<Effect>): Decision {
         val m = remaps.forKey(keyCode)
         // repeatCount > 0: the press began before it was mapped, so its up must pass through too
-        if (m.isEmpty() || repeatCount > 0) return Decision(false, fx)
+        // Home is always mapped: its single press defaults to opening Cherrypicked
+        if ((m.isEmpty() && keyCode != KEY_HOME) || repeatCount > 0) return Decision(false, fx)
         key = keyCode; map = m; held = true
         single = m[Press.SINGLE] ?: when (keyCode) {
             KEY_HOME -> Action.Home

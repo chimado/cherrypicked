@@ -11,9 +11,9 @@ class ActionRunner(private val svc: AccessibilityService) {
     fun run(a: Action) {
         when (a) {
             Action.Home -> svc.startActivity(Intent(svc, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            Action.Back -> svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            Action.Back -> global(AccessibilityService.GLOBAL_ACTION_BACK)
             is Action.OpenApp -> if (!AppCatalog(svc).launch(a.pkg)) Log.w("CP", "remap app missing ${a.pkg}")
-            Action.ScreenOff -> svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+            Action.ScreenOff -> global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
             // ponytail: placeholders until Tasks 5-7 land
             is Action.OpenInput -> Log.i("CP", "inputs not ready ${a.inputId}")
             Action.QuickPanel -> Log.i("CP", "quick_panel not ready")
@@ -21,4 +21,6 @@ class ActionRunner(private val svc: AccessibilityService) {
             Action.Nothing -> {}
         }
     }
+
+    private fun global(g: Int) { if (!svc.performGlobalAction(g)) Log.w("CP", "global action $g failed") }
 }

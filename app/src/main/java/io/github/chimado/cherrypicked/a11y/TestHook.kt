@@ -29,10 +29,12 @@ class TestHook(
             if (a == null) Log.w("CP", "test bad action=$action") else run(a)
             return
         }
-        val code = i.getStringExtra("key")?.toIntOrNull() ?: i.getIntExtra("key", -1)
+        @Suppress("DEPRECATION") val raw = i.extras?.get("key") // one typed read: a mismatched getter logs a ClassCastException
+        val code = if (raw is Int) raw else raw?.toString()?.toIntOrNull() ?: -1
         val press = Press.entries.firstOrNull { it.name == i.getStringExtra("press") }
         Log.i("CP", "test key=$code press=$press")
         if (code < 0 || press == null) { Log.w("CP", "test needs key=<code> press=SINGLE|DOUBLE|LONG"); return }
+        cancel() // a new command replaces any script still running
         for (s in script(press)) handler.postDelayed({ key(code, s.down, s.repeatCount) }, this, s.atMs)
     }
 

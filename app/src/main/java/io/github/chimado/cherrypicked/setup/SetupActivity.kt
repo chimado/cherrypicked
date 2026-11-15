@@ -108,6 +108,7 @@ class SetupActivity : Activity() {
     private fun edit(edit: (Config) -> Config) {
         config = edit(config)
         note = try { store.save(config); null } catch (_: IOException) { "Couldn't save" }
+        if (note == null) sendBroadcast(Intent(KeyLearn.ACTION_CONFIG_CHANGED).setPackage(PKG))
     }
 
     private fun label(pkg: String) = apps.firstOrNull { it.pkg == pkg }?.label ?: pkg

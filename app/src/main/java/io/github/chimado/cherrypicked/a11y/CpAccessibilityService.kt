@@ -32,8 +32,8 @@ class CpAccessibilityService : AccessibilityService() {
     private var registered = false
     private val tvInputPackages by lazy { tvInputPackages(this) }
 
-    private val store by lazy { ConfigStore(filesDir) } // caches by config.json lastModified, so load() is one stat
-    private var remaps: List<Remap> = emptyList()
+    private val store by lazy { ConfigStore(filesDir) } // caches by config.json lastModified
+    private var remaps: List<Remap> = emptyList() // identity check only: reload when the store hands back a new list
     private val engine = RemapEngine(emptyList())
     private val runner by lazy { ActionRunner(this) }
     private val engineTimer = Runnable { handle(engine.onTimer(SystemClock.uptimeMillis())) }
@@ -58,6 +58,10 @@ class CpAccessibilityService : AccessibilityService() {
         }
     }
 
+    private val configRx = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) = refreshRemaps()
+    }
+
     private var learning = false
     private var learnedDown = -1 // the learned key whose ACTION_UP is still to be consumed
 
@@ -67,6 +71,8 @@ class CpAccessibilityService : AccessibilityService() {
         override fun onReceive(c: Context, i: Intent) {
             if (learning) return // one session at a time
             learning = true
+            handler.removeCallbacks(engineTimer) // drop any press in progress; learn mode owns the keys now
+            engine.reset()
             handler.postDelayed(learnEnd, KeyLearn.WINDOW_MS)
         }
     }
@@ -91,6 +97,7 @@ class CpAccessibilityService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_OFF)
         }, RECEIVER_NOT_EXPORTED)
         registerReceiver(learnRx, IntentFilter(KeyLearn.ACTION_START), RECEIVER_NOT_EXPORTED)
+        registerReceiver(configRx, IntentFilter(KeyLearn.ACTION_CONFIG_CHANGED), RECEIVER_NOT_EXPORTED)
         // Exported because the sender is the shell uid; DUMP keeps normal apps out.
         registerReceiver(testHook, IntentFilter(TestHook.ACTION), "android.permission.DUMP", handler, RECEIVER_EXPORTED)
         registered = true
@@ -124,7 +131,6 @@ class CpAccessibilityService : AccessibilityService() {
 
     /** The one remap path, shared by real keys and [TestHook]. Uptime clock throughout, matching handler.postAtTime. */
     private fun feedKey(code: Int, down: Boolean, repeat: Int, canceled: Boolean): Boolean {
-        if (down && repeat == 0 && remaps.none { it.keyCode == code }) refreshRemaps()
         val d = engine.onKey(code, down, repeat, canceled, SystemClock.uptimeMillis())
         handle(d.effects)
         return d.consume
@@ -175,7 +181,7 @@ class CpAccessibilityService : AccessibilityService() {
         engine.reset()
         learning = false
         learnedDown = -1
-        if (registered) { unregisterReceiver(screenRx); unregisterReceiver(learnRx); unregisterReceiver(testHook); registered = false }
+        if (registered) { unregisterReceiver(screenRx); unregisterReceiver(learnRx); unregisterReceiver(configRx); unregisterReceiver(testHook); registered = false }
     }
 }
 
