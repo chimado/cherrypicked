@@ -118,7 +118,7 @@ class HomeActivity : Activity() {
         vw = w / 100f
 
         val root = FrameLayout(this)
-        root.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Theme.BG_TOP, Theme.BG_BOTTOM))
+        root.background = PatternDrawable(Theme.palette)
         body = FrameLayout(this).apply { clipChildren = false }
         root.addView(body, FrameLayout.LayoutParams(-1, -1))
         val light = Typeface.createFromAsset(assets, "Inter-ExtraLight.ttf")
