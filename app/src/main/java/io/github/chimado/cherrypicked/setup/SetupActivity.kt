@@ -76,7 +76,8 @@ class SetupActivity : Activity() {
     private var started = false
     private var learnText: String? = null
     private var buttonsNote: String? = null
-    private var resetArmed = false
+    private var renders = 0
+    private var armedFor = -1 // reset is armed only in the render right after its first OK
 
     private val learnRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -171,12 +172,14 @@ class SetupActivity : Activity() {
         is Sub.RemapActions -> listOf(
             Row(remapText(s.r)),
             Row("Change action", "change") { sub = Sub.PickAction(s.r.keyCode, s.r.press) },
-            Row("Remove", "remove") { edit { it.removeRemap(s.r.keyCode, s.r.press) }; sub = null },
+            Row(if (config.removeRemap(s.r.keyCode, s.r.press).remaps.size < config.remaps.size - 1) "Remove (also removes Double/Long)" else "Remove", "remove") {
+                edit { it.removeRemap(s.r.keyCode, s.r.press) }; sub = null
+            },
         )
-        Sub.Learn -> listOf(Row("Press the button to change…"))
+        Sub.Learn -> listOf(Row("Press the button to change… (waits ${KeyLearn.WINDOW_MS / 1000} s)"))
         is Sub.PickPress -> listOf(Row(KeyNames.label(s.key) + ": which press?")) + Press.entries.map { p ->
             if (canRemap(s.key, p, config.remaps)) Row(pressLabel(p), "press:${p.name}") { sub = Sub.PickAction(s.key, p) }
-            else Row(pressLabel(p) + ": Set a single press first")
+            else Row(pressLabel(p) + if (isNavKey(s.key)) ": needed to move around" else ": Set a single press first")
         }
         is Sub.PickAction -> {
             fun pick(a: Action, text: String) = Row(text, "act:${a.encode()}") { edit { it.putRemap(Remap(s.key, s.press, a)) }; sub = null }
@@ -222,9 +225,9 @@ class SetupActivity : Activity() {
             buttonsNote?.let { add(Row(it)) }
             remaps.forEach { r -> add(Row(remapText(r), remapId(r.keyCode, r.press)) { sub = Sub.RemapActions(r) }) }
             add(Row("Add button…", "add-remap") { sub = Sub.Learn; sendBroadcast(Intent(KeyLearn.ACTION_START).setPackage(PKG)) })
-            add(Row(if (resetArmed) "Reset buttons: press OK again to confirm" else "Reset buttons", "reset-remaps") {
-                if (resetArmed) edit { it.resetRemaps() }
-                resetArmed = !resetArmed
+            val armed = armedFor == renders
+            add(Row(if (armed) "Reset buttons: press OK again to confirm" else "Reset buttons", "reset-remaps") {
+                if (armed) { edit { it.resetRemaps() }; armedFor = -1 } else armedFor = renders + 1
             })
             add(Row(learnText ?: "Button test", "button-test") {
                 learnText = TEST_PROMPT
@@ -254,7 +257,6 @@ class SetupActivity : Activity() {
         val before = sub
         val id = focusedId()
         buttonsNote = null
-        if (r.id != "reset-remaps") resetArmed = false
         r.onClick?.invoke()
         val now = sub
         when {
@@ -265,6 +267,7 @@ class SetupActivity : Activity() {
     }
 
     private fun render(focusId: String?, section: String?) {
+        renders++
         list.removeAllViews()
         val rows = rows()
         rows.forEach { list.addView(row(it)) }
@@ -286,6 +289,10 @@ class SetupActivity : Activity() {
             setOnFocusChangeListener { v, f ->
                 v.background = if (f) GradientDrawable().apply { setColor(FOCUS_BG); setStroke(0, 0) } else ColorDrawable(0)
                 (v as TextView).setTextColor(if (f) Theme.ACCENT else Theme.TEXT)
+                // Focus moved off an armed reset: disarm. Posted, so a removal by render (parent gone) doesn't count.
+                if (!f && r.id == "reset-remaps") v.post {
+                    if (v.parent != null && !v.hasFocus() && armedFor == renders) { armedFor = -1; v.text = "Reset buttons" }
+                }
             }
         }
     }

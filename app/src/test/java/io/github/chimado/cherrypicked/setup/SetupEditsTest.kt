@@ -86,6 +86,22 @@ class SetupEditsTest {
         assertTrue(canRemap(menu, Press.DOUBLE, listOf(Remap(menu, Press.SINGLE, Action.Home))))
     }
 
+    @Test fun cannotRemapSingleOnOk() {
+        for (k in listOf(23, 66, 160)) Press.entries.forEach { p -> assertFalse("$k $p", canRemap(k, p, emptyList())) }
+    }
+
+    @Test fun cannotRemapSingleOnDpad() {
+        for (k in 19..22) Press.entries.forEach { p -> assertFalse("$k $p", canRemap(k, p, listOf(Remap(k, Press.SINGLE, Action.Home)))) }
+    }
+
+    @Test fun putRemapRefusesWhatCanRemapRefuses() {
+        assertEquals(r, r.putRemap(Remap(23, Press.SINGLE, Action.Home)))
+        assertEquals(r, r.putRemap(Remap(19, Press.SINGLE, Action.Home)))
+        assertEquals(r, r.putRemap(Remap(19, Press.LONG, Action.Home)))
+        val noSingle = Config(remaps = emptyList())
+        assertEquals(noSingle, noSingle.putRemap(Remap(menu, Press.LONG, Action.Home)))
+    }
+
     @Test fun resetRemaps() {
         assertEquals(DEFAULT_REMAPS, r.resetRemaps().remaps)
         assertEquals(r.favorites, r.resetRemaps().favorites)

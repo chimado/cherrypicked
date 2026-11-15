@@ -42,6 +42,7 @@ fun focusTarget(ids: List<String?>, prevId: String?, section: String?): Int {
 fun Config.putRemap(r: Remap): Config {
     val a = r.action
     if ((a is Action.OpenApp && a.pkg.isEmpty()) || (a is Action.OpenInput && a.inputId.isEmpty())) return this
+    if (!canRemap(r.keyCode, r.press, remaps)) return this
     return copy(remaps = remaps.filterNot { it.keyCode == r.keyCode && it.press == r.press } + r)
 }
 
@@ -51,9 +52,16 @@ fun Config.removeRemap(keyCode: Int, press: Press): Config {
     return copy(remaps = left.filter { it.keyCode != keyCode || canRemap(it.keyCode, it.press, left) })
 }
 
-/** A consumed key can't be re-injected, so double/long needs a single remap unless the single press is reproducible (Home, Back). */
-fun canRemap(keyCode: Int, press: Press, existing: List<Remap>): Boolean =
+/** OK and the D-pad: remapping their single press would lock the owner out of every screen, Setup included. */
+fun isNavKey(keyCode: Int) = keyCode in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_CENTER ||
+    keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+
+/**
+ * A consumed key can't be re-injected, so double/long needs a single remap unless the single press is reproducible (Home, Back).
+ * Nav keys can't have a single remap, so they can't have any.
+ */
+fun canRemap(keyCode: Int, press: Press, existing: List<Remap>): Boolean = !isNavKey(keyCode) && (
     press == Press.SINGLE || keyCode == KeyEvent.KEYCODE_HOME || keyCode == KeyEvent.KEYCODE_BACK ||
-        existing.any { it.keyCode == keyCode && it.press == Press.SINGLE }
+        existing.any { it.keyCode == keyCode && it.press == Press.SINGLE })
 
 fun Config.resetRemaps() = copy(remaps = DEFAULT_REMAPS)
