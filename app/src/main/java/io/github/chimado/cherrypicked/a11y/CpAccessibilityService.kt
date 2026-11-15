@@ -14,15 +14,20 @@ import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import io.github.chimado.cherrypicked.apps.AppCatalog
+import io.github.chimado.cherrypicked.keys.Action
 import io.github.chimado.cherrypicked.keys.Effect
 import io.github.chimado.cherrypicked.keys.KeyNames
 import io.github.chimado.cherrypicked.keys.Remap
 import io.github.chimado.cherrypicked.keys.RemapEngine
 import io.github.chimado.cherrypicked.keys.encode
 import io.github.chimado.cherrypicked.store.ConfigStore
+import io.github.chimado.cherrypicked.store.writeDurably
+import io.github.chimado.cherrypicked.timer.RestoreResult
+import io.github.chimado.cherrypicked.timer.SleepTimer
 import java.io.File
 import java.io.IOException
 
@@ -35,10 +40,46 @@ class CpAccessibilityService : AccessibilityService() {
     private val store by lazy { ConfigStore(filesDir) } // caches by config.json lastModified
     private var remaps: List<Remap> = emptyList() // identity check only: reload when the store hands back a new list
     private val engine = RemapEngine(emptyList())
-    private val runner by lazy { ActionRunner(this) }
+    private val runner by lazy { ActionRunner(this, ::cycleSleepTimer) }
     private val engineTimer = Runnable { handle(engine.onTimer(SystemClock.uptimeMillis())) }
     private val testHook = TestHook(handler, { runner.run(it) }) { code, down, repeat ->
         Log.i("CP", "test feed key=$code down=$down repeat=$repeat consume=${feedKey(code, down, repeat, false)}")
+    }
+
+    /** Wall-clock end of the running sleep timer, or null. Read by the quick panel (same process). */
+    var sleepEndMs: Long? = null
+        private set
+    private val sleepFile by lazy { File(filesDir, "sleep_timer") }
+    private val sleepFire = Runnable {
+        Log.i("CP", "sleep timer fired")
+        saveSleep(null)
+        runner.run(Action.ScreenOff)
+    }
+
+    private fun saveSleep(end: Long?) {
+        sleepEndMs = end
+        handler.removeCallbacks(sleepFire)
+        try {
+            if (end == null) sleepFile.delete() else sleepFile.writeDurably(end.toString())
+        } catch (e: IOException) { Log.w("CP", "sleep timer not saved", e) }
+        if (end != null) handler.postAtTime(sleepFire, SystemClock.uptimeMillis() + (end - System.currentTimeMillis()).coerceAtLeast(0))
+    }
+
+    private fun cycleSleepTimer() {
+        val now = System.currentTimeMillis()
+        val end = SleepTimer.next(sleepEndMs, now)
+        saveSleep(end)
+        val msg = if (end == null) "Sleep timer off" else "Sleep in ${(end - now) / 60_000} min"
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun restoreSleep() {
+        val saved = try { sleepFile.readText().trim().toLong() } catch (_: IOException) { null } catch (_: NumberFormatException) { null }
+        when (val r = SleepTimer.restore(saved, System.currentTimeMillis())) {
+            is RestoreResult.Arm -> saveSleep(r.endMs)
+            RestoreResult.FireNow -> sleepFire.run()
+            RestoreResult.Drop -> saveSleep(null)
+        }
     }
 
     private val wakeCheck = Runnable {
@@ -90,6 +131,7 @@ class CpAccessibilityService : AccessibilityService() {
         engine.reset()
         remaps = store.load().remaps
         engine.setRemaps(remaps)
+        restoreSleep()
         if (registered) return
         // Protected system broadcasts only; the system still delivers them to a non-exported receiver.
         registerReceiver(screenRx, IntentFilter().apply {
@@ -177,6 +219,7 @@ class CpAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(wakeCheck)
         handler.removeCallbacks(learnEnd)
         handler.removeCallbacks(engineTimer)
+        handler.removeCallbacks(sleepFire) // the saved file stays, so a reconnect re-arms it
         testHook.cancel()
         engine.reset()
         learning = false
