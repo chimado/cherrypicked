@@ -1,7 +1,12 @@
 package io.github.chimado.cherrypicked.setup
 
+import android.view.KeyEvent
 import io.github.chimado.cherrypicked.home.HomeModel
+import io.github.chimado.cherrypicked.keys.Action
+import io.github.chimado.cherrypicked.keys.Press
+import io.github.chimado.cherrypicked.keys.Remap
 import io.github.chimado.cherrypicked.store.Config
+import io.github.chimado.cherrypicked.store.DEFAULT_REMAPS
 
 /** Pure config edits for Setup; each returns the same config when the edit is refused. */
 fun Config.moveFavorite(pkg: String, delta: Int): Config {
@@ -32,3 +37,23 @@ fun focusTarget(ids: List<String?>, prevId: String?, section: String?): Int {
     val from = section?.let { ids.indexOf("#$it") }?.coerceAtLeast(0) ?: 0
     return (from until ids.size).firstOrNull(::ok) ?: ids.indices.firstOrNull(::ok) ?: -1
 }
+
+/** Replaces the remap with the same key and press; refuses an empty app/input id, which would not survive a save. */
+fun Config.putRemap(r: Remap): Config {
+    val a = r.action
+    if ((a is Action.OpenApp && a.pkg.isEmpty()) || (a is Action.OpenInput && a.inputId.isEmpty())) return this
+    return copy(remaps = remaps.filterNot { it.keyCode == r.keyCode && it.press == r.press } + r)
+}
+
+/** Removing a key's single also drops its double/long when those can't stand alone (they would swallow single presses). */
+fun Config.removeRemap(keyCode: Int, press: Press): Config {
+    val left = remaps.filterNot { it.keyCode == keyCode && it.press == press }
+    return copy(remaps = left.filter { it.keyCode != keyCode || canRemap(it.keyCode, it.press, left) })
+}
+
+/** A consumed key can't be re-injected, so double/long needs a single remap unless the single press is reproducible (Home, Back). */
+fun canRemap(keyCode: Int, press: Press, existing: List<Remap>): Boolean =
+    press == Press.SINGLE || keyCode == KeyEvent.KEYCODE_HOME || keyCode == KeyEvent.KEYCODE_BACK ||
+        existing.any { it.keyCode == keyCode && it.press == Press.SINGLE }
+
+fun Config.resetRemaps() = copy(remaps = DEFAULT_REMAPS)

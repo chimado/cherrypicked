@@ -94,7 +94,7 @@ class HomeActivity : Activity() {
     private val hideHint = Runnable {
         hint.visibility = View.GONE
         hintPending = false
-        save(config.copy(hintShown = true))
+        save { it.copy(hintShown = true) }
     }
     private val timeRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) = tick.run()
@@ -222,7 +222,9 @@ class HomeActivity : Activity() {
         }
     }
 
-    private fun save(c: Config) {
+    /** Read-modify-write on a fresh load, so Home never writes back stale fields Setup changed (remaps, hidden...). */
+    private fun save(change: (Config) -> Config) {
+        val c = change(store.load())
         config = c
         try {
             store.save(c)
@@ -288,9 +290,9 @@ class HomeActivity : Activity() {
             FrameLayout.LayoutParams(-1, -2).apply { topMargin = top.toInt() })
 
         val buttons = listOfNotNull(
-            "Yes" to { save(config.accept(s)); refresh(force = true, reload = false) },
+            "Yes" to { save { it.accept(s) }; refresh(force = true, reload = false) },
             ("Pick another" to { open(SETUP, "autoopen") }).takeIf { s is Suggestion.MainApp },
-            "Not now" to { save(config.decline(s)); refresh(force = true, reload = false) },
+            "Not now" to { save { it.decline(s) }; refresh(force = true, reload = false) },
         )
         val pad = 1f * vw; val gap = 1.5f * vw
         val vpad = 0.4f * vw // room for the focus pill

@@ -23,7 +23,13 @@ import io.github.chimado.cherrypicked.apps.AppCatalog
 import io.github.chimado.cherrypicked.health.HomeHealth
 import io.github.chimado.cherrypicked.home.AppEntry
 import io.github.chimado.cherrypicked.home.HomeModel
+import io.github.chimado.cherrypicked.home.TvInput
+import io.github.chimado.cherrypicked.inputs.InputCatalog
+import io.github.chimado.cherrypicked.keys.Action
 import io.github.chimado.cherrypicked.keys.KeyNames
+import io.github.chimado.cherrypicked.keys.Press
+import io.github.chimado.cherrypicked.keys.Remap
+import io.github.chimado.cherrypicked.keys.encode
 import io.github.chimado.cherrypicked.store.Config
 import io.github.chimado.cherrypicked.store.ConfigStore
 import java.io.IOException
@@ -32,6 +38,10 @@ import kotlin.math.max
 private const val PKG = "io.github.chimado.cherrypicked"
 private const val DIM = 0x99E9EAEE.toInt()
 private const val FOCUS_BG = 0x33E0233F
+private const val TEST_PROMPT = "Press any button on your remote…"
+
+private fun remapId(key: Int, press: Press) = "remap:$key:${press.name}"
+private fun pressLabel(p: Press) = p.name.lowercase().replaceFirstChar(Char::uppercase)
 
 /** [id]: a stable focus id for an actionable row, `#key` for a section header (the target of a "section" extra). */
 private class Row(val text: String, val id: String? = null, val onClick: (() -> Unit)? = null) {
@@ -43,6 +53,11 @@ private sealed class Sub(val opener: String, val section: String) {
     class FavActions(val pkg: String) : Sub("fav:$pkg", "favorites")
     object PickFavorite : Sub("add-fav", "favorites")
     object PickMain : Sub("main", "autoopen")
+    class RemapActions(val r: Remap) : Sub(remapId(r.keyCode, r.press), "buttons")
+    object Learn : Sub("add-remap", "buttons")
+    class PickPress(val key: Int) : Sub("add-remap", "buttons")
+    /** Opener is the remap's row: focused after a pick; gone (falls back to the section) when an add is abandoned. */
+    class PickAction(val key: Int, val press: Press) : Sub(remapId(key, press), "buttons")
 }
 
 /** Plain list setup screen in its own `:setup` process; every change is saved at once. */
@@ -50,6 +65,7 @@ class SetupActivity : Activity() {
     private lateinit var store: ConfigStore
     private lateinit var config: Config
     private lateinit var apps: List<AppEntry>
+    private lateinit var inputs: List<TvInput>
     private lateinit var scroll: ScrollView
     private lateinit var list: LinearLayout
     private lateinit var regular: Typeface
@@ -59,10 +75,18 @@ class SetupActivity : Activity() {
     private var usageNote = false
     private var started = false
     private var learnText: String? = null
+    private var buttonsNote: String? = null
+    private var resetArmed = false
 
     private val learnRx = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             val k = i.getIntExtra(KeyLearn.EXTRA_KEY, -1)
+            if (sub === Sub.Learn) {
+                if (k < 0) { sub = null; buttonsNote = "No button seen"; render("add-remap", "buttons") }
+                else { sub = Sub.PickPress(k); render(null, null) }
+                return
+            }
+            if (learnText != TEST_PROMPT) return // a learn the user left with Back; not a button test
             learnText = if (k < 0) "No button seen" else "You pressed: ${KeyNames.label(k)} ($k)"
             render(focusedId(), null)
         }
@@ -73,6 +97,7 @@ class SetupActivity : Activity() {
         store = ConfigStore(filesDir)
         config = store.load()
         apps = AppCatalog(this).apps().sortedBy { it.label.lowercase() }
+        inputs = InputCatalog(this).inputs()
         val b = windowManager.currentWindowMetrics.bounds
         vw = max(b.width(), b.height()) / 100f
         regular = Typeface.createFromAsset(assets, "Inter-Regular.ttf")
@@ -106,12 +131,28 @@ class SetupActivity : Activity() {
     }
 
     private fun edit(edit: (Config) -> Config) {
-        config = edit(config)
+        config = edit(store.load()) // fresh: Home may have saved since
         note = try { store.save(config); null } catch (_: IOException) { "Couldn't save" }
         if (note == null) sendBroadcast(Intent(KeyLearn.ACTION_CONFIG_CHANGED).setPackage(PKG))
     }
 
-    private fun label(pkg: String) = apps.firstOrNull { it.pkg == pkg }?.label ?: pkg
+    /** A favorite entry's label: an app package or `input:<id>`. */
+    private fun label(entry: String) = if (entry.startsWith("input:"))
+        "Input: " + (inputs.firstOrNull { "input:${it.id}" == entry }?.label ?: entry.removePrefix("input:"))
+        else apps.firstOrNull { it.pkg == entry }?.label ?: entry
+
+    private fun actionLabel(a: Action) = when (a) {
+        is Action.OpenApp -> "Open " + label(a.pkg) + if (apps.none { it.pkg == a.pkg }) " (app missing)" else ""
+        is Action.OpenInput -> label("input:${a.inputId}")
+        Action.Home -> "Home"
+        Action.Back -> "Back"
+        Action.QuickPanel -> "Quick panel"
+        Action.SleepTimer -> "Sleep timer"
+        Action.ScreenOff -> "Screen off"
+        Action.Nothing -> "Do nothing"
+    }
+
+    private fun remapText(r: Remap) = "${KeyNames.label(r.keyCode)} · ${pressLabel(r.press)} → ${actionLabel(r.action)}"
 
     private fun rows(): List<Row> = when (val s = sub) {
         is Sub.FavActions -> listOf(
@@ -121,11 +162,29 @@ class SetupActivity : Activity() {
             Row("Remove", "remove") { edit { it.removeFavorite(s.pkg) }; sub = null },
         )
         Sub.PickFavorite -> listOf(Row("Add favorite")) +
-            apps.filter { it.pkg !in config.favorites && it.pkg !in config.hidden }.map { a ->
-                Row(a.label, "pick:${a.pkg}") { edit { it.addFavorite(a.pkg) }; sub = null }
-            }
+            (apps.filter { it.pkg !in config.hidden }.map { it.pkg } + inputs.map { "input:${it.id}" })
+                .filter { it !in config.favorites }.map { f ->
+                    Row(label(f), "pick:$f") { edit { it.addFavorite(f) }; sub = null }
+                }
         Sub.PickMain -> listOf(Row("Main app")) +
             apps.map { a -> Row(a.label, "pick:${a.pkg}") { edit { it.setMainApp(a.pkg) }; sub = null } }
+        is Sub.RemapActions -> listOf(
+            Row(remapText(s.r)),
+            Row("Change action", "change") { sub = Sub.PickAction(s.r.keyCode, s.r.press) },
+            Row("Remove", "remove") { edit { it.removeRemap(s.r.keyCode, s.r.press) }; sub = null },
+        )
+        Sub.Learn -> listOf(Row("Press the button to change…"))
+        is Sub.PickPress -> listOf(Row(KeyNames.label(s.key) + ": which press?")) + Press.entries.map { p ->
+            if (canRemap(s.key, p, config.remaps)) Row(pressLabel(p), "press:${p.name}") { sub = Sub.PickAction(s.key, p) }
+            else Row(pressLabel(p) + ": Set a single press first")
+        }
+        is Sub.PickAction -> {
+            fun pick(a: Action, text: String) = Row(text, "act:${a.encode()}") { edit { it.putRemap(Remap(s.key, s.press, a)) }; sub = null }
+            listOf(Row("${KeyNames.label(s.key)} · ${pressLabel(s.press)} →")) +
+                apps.filter { it.pkg !in config.hidden }.map { pick(Action.OpenApp(it.pkg), it.label) } +
+                inputs.map { pick(Action.OpenInput(it.id), "Input: ${it.label}") } +
+                listOf(Action.Home, Action.Back, Action.QuickPanel, Action.SleepTimer, Action.ScreenOff, Action.Nothing).map { pick(it, actionLabel(it)) }
+        }
         null -> mainRows()
     }
 
@@ -144,19 +203,34 @@ class SetupActivity : Activity() {
         add(Row("Hidden apps", "#hidden"))
         apps.forEach { a -> add(Row((if (a.pkg in config.hidden) "✓  " else "     ") + a.label, "hide:${a.pkg}") { edit { it.toggleHidden(a.pkg) } }) }
 
+        val bound = HomeHealth.isEnabled(this@SetupActivity)
         add(Row("Home button", "#home"))
-        if (HomeHealth.isEnabled(this@SetupActivity)) add(Row("Connected")) else {
+        if (bound) add(Row("Connected")) else {
             add(Row("Not connected"))
             add(Row("1. Settings > Accessibility > Cherrypicked > On"))
             add(Row("2. If that is greyed out, run from a computer: adb shell settings put secure enabled_accessibility_services <current list>:$PKG/.a11y.CpAccessibilityService"))
             add(Row("3. On TCL TVs also allow auto-start: adb shell appops set $PKG APP_AUTO_START allow"))
         }
-        add(if (!HomeHealth.isEnabled(this@SetupActivity)) Row("Button test: Needs the Home button connected")
-            else Row(learnText ?: "Button test", "learn") {
-                learnText = "Press any button on your remote…"
+        add(Row("Open accessibility settings", "a11y") { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) })
+
+        add(Row("Buttons", "#buttons"))
+        val remaps = config.remaps.sortedWith(compareBy({ it.keyCode }, { it.press }))
+        if (!bound) {
+            add(Row("Buttons need the Home button connected"))
+            remaps.forEach { add(Row(remapText(it))) }
+        } else {
+            buttonsNote?.let { add(Row(it)) }
+            remaps.forEach { r -> add(Row(remapText(r), remapId(r.keyCode, r.press)) { sub = Sub.RemapActions(r) }) }
+            add(Row("Add button…", "add-remap") { sub = Sub.Learn; sendBroadcast(Intent(KeyLearn.ACTION_START).setPackage(PKG)) })
+            add(Row(if (resetArmed) "Reset buttons: press OK again to confirm" else "Reset buttons", "reset-remaps") {
+                if (resetArmed) edit { it.resetRemaps() }
+                resetArmed = !resetArmed
+            })
+            add(Row(learnText ?: "Button test", "button-test") {
+                learnText = TEST_PROMPT
                 sendBroadcast(Intent(KeyLearn.ACTION_START).setPackage(PKG))
             })
-        add(Row("Open accessibility settings", "a11y") { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) })
+        }
 
         add(Row("Usage access", "#usage"))
         add(Row(if (usageAllowed()) "Allowed" else "Not allowed"))
@@ -179,6 +253,8 @@ class SetupActivity : Activity() {
     private fun click(r: Row) {
         val before = sub
         val id = focusedId()
+        buttonsNote = null
+        if (r.id != "reset-remaps") resetArmed = false
         r.onClick?.invoke()
         val now = sub
         when {
