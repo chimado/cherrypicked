@@ -41,4 +41,15 @@ class ConfigTest {
         val l = listOf(Remap(3, Press.LONG, Action.QuickPanel), Remap(3, Press.DOUBLE, Action.Back), Remap(4, Press.SINGLE, Action.Home))
         assertEquals(mapOf(Press.LONG to Action.QuickPanel, Press.DOUBLE to Action.Back), l.forKey(3))
     }
+
+    private fun remaps(body: String) = Config.fromJson("{\"remaps\":$body}").remaps
+
+    @Test fun emptyRemapsStayEmpty() = assertEquals(emptyList<Remap>(), remaps("[]"))
+
+    @Test fun malformedEntriesSkipped() = assertEquals(emptyList<Remap>(), remaps(
+        "[5,\"x\",null,{\"press\":\"LONG\",\"action\":\"home\"}," +
+            "{\"key\":\"abc\",\"press\":\"LONG\",\"action\":\"home\"},{\"key\":null,\"press\":\"LONG\",\"action\":\"home\"}]"))
+
+    @Test fun duplicateKeyPressLastWins() = assertEquals(listOf(Remap(3, Press.LONG, Action.Back)), remaps(
+        "[{\"key\":3,\"press\":\"LONG\",\"action\":\"home\"},{\"key\":3,\"press\":\"LONG\",\"action\":\"back\"}]"))
 }

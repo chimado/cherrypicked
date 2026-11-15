@@ -15,5 +15,7 @@ class RemapTest {
     @Test fun decodeUnknownIsNull() {
         assertNull(decodeAction("bogus"))
         assertNull(decodeAction(""))
+        assertNull(decodeAction("app:"))
+        assertNull(decodeAction("input:"))
     }
 }

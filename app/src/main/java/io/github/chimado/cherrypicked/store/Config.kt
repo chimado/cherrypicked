@@ -62,8 +62,9 @@ fun Config.Companion.fromJson(s: String): Config = try {
                 val e = a.optJSONObject(i) ?: return@mapNotNull null
                 val press = runCatching { Press.valueOf(e.optString("press")) }.getOrNull() ?: return@mapNotNull null
                 val action = decodeAction(e.optString("action")) ?: return@mapNotNull null
-                if (!e.has("key")) null else Remap(e.optInt("key"), press, action)
-            }
+                val key = (e.opt("key") as? Number)?.toInt() ?: return@mapNotNull null
+                Remap(key, press, action)
+            }.associateBy { it.keyCode to it.press }.values.toList() // duplicate (key, press): last wins
         },
     )
 } catch (e: JSONException) {

@@ -27,8 +27,8 @@ fun Action.encode(): String = when (this) {
 }
 
 fun decodeAction(s: String): Action? = when {
-    s.startsWith("app:") -> Action.OpenApp(s.removePrefix("app:"))
-    s.startsWith("input:") -> Action.OpenInput(s.removePrefix("input:"))
+    s.startsWith("app:") && s.length > 4 -> Action.OpenApp(s.removePrefix("app:"))
+    s.startsWith("input:") && s.length > 6 -> Action.OpenInput(s.removePrefix("input:"))
     s == "home" -> Action.Home
     s == "back" -> Action.Back
     s == "quick_panel" -> Action.QuickPanel
