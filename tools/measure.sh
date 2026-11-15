@@ -52,6 +52,8 @@ log "pss_onscreen_kb: ${m[*]}"
 pid=$(ad shell pidof "$P" | tr -d '\r')
 ticks() { ad shell cat /proc/"$pid"/stat | awk '{print $14+$15}'; }
 layer=$(ad shell dumpsys SurfaceFlinger --list | grep "$P" | grep -v -iE 'background|bounds' | tail -1 | tr -d '\r')
+# Start just after a minute boundary (device clock) so the by-design clock tick falls outside the 30 s window.
+sec=$(ad shell date +%S | tr -d '\r'); sleep $(( (61 - 10#${sec:-1}) % 60 ))
 ad shell dumpsys SurfaceFlinger --latency-clear >/dev/null
 t0=$(ticks); sleep 30; t1=$(ticks)
 idle_frames=$(ad shell dumpsys SurfaceFlinger --latency "$layer" | awk 'NR>1 && $2>0 && $2<9e18' | wc -l)

@@ -23,6 +23,7 @@ import android.view.WindowInsetsController
 import android.widget.FrameLayout
 import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
+import io.github.chimado.cherrypicked.a11y.tvInputPackages
 import io.github.chimado.cherrypicked.apps.AppCatalog
 import io.github.chimado.cherrypicked.health.HomeHealth
 import io.github.chimado.cherrypicked.rank.UsageLedger
@@ -40,6 +41,7 @@ import kotlin.math.min
 
 private const val TAG = "Cherrypicked"
 private const val DIM = 0x99E9EAEE.toInt()
+private const val FOCUS_BG = 0x33E0233F // as in Setup
 // Started by name: these activities land in Tasks 7 and 8; until then opening them is a no-op.
 private const val ALL_APPS = "io.github.chimado.cherrypicked.home.AllAppsActivity"
 private const val SETUP = "io.github.chimado.cherrypicked.setup.SetupActivity"
@@ -64,6 +66,7 @@ class HomeActivity : Activity() {
     private var items: List<List<Item>> = emptyList()
     private var tier2Box: View? = null
     private var apps: List<AppEntry>? = null // cached; dropped by pkgRx
+    private var excluded: Set<String>? = null // other launchers + TV-input apps, never suggested; dropped by pkgRx
     private var fg: Map<String, Long> = emptyMap()
     private var fgAt = Long.MIN_VALUE / 2
     private var resumed = false
@@ -98,6 +101,7 @@ class HomeActivity : Activity() {
         override fun onReceive(c: Context, i: Intent) {
             i.data?.schemeSpecificPart?.let { catalog.evict(it) }
             apps = null
+            excluded = null
             if (resumed) refresh(force = true) else stale = true
         }
     }
@@ -140,7 +144,7 @@ class HomeActivity : Activity() {
             addAction(Intent.ACTION_PACKAGE_REMOVED)
             addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
-        }, RECEIVER_EXPORTED)
+        }, RECEIVER_NOT_EXPORTED)
         window.insetsController?.apply {
             hide(WindowInsets.Type.systemBars())
             systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -158,12 +162,12 @@ class HomeActivity : Activity() {
     override fun onResume() {
         super.onResume()
         tick.run()
-        // Protected system broadcasts only, so exporting the receivers exposes nothing.
+        // Protected system broadcasts only; the system still delivers them to non-exported receivers.
         registerReceiver(timeRx, IntentFilter().apply {
             addAction(Intent.ACTION_TIME_CHANGED)
             addAction(Intent.ACTION_TIMEZONE_CHANGED)
             addAction(Intent.ACTION_DATE_CHANGED)
-        }, RECEIVER_EXPORTED)
+        }, RECEIVER_NOT_EXPORTED)
         resumed = true
         refresh(force = stale)
         stale = false
@@ -201,7 +205,9 @@ class HomeActivity : Activity() {
         // Usage stats can take tens of ms; ranking drifts slowly, so 10 min staleness is fine.
         if (now - fgAt > 10 * 60_000L) { fg = foregroundLast14d(this); fgAt = now }
         val scores = ledger.scores(now, fg)
-        val next = HomeModel.build(apps, config, scores, homeBroken = !HomeHealth.isEnabled(this)) to Suggester.next(apps, config, scores)
+        val ex = excluded ?: (packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+            .map { it.activityInfo.packageName }.toSet() + tvInputPackages(this)).also { excluded = it }
+        val next = HomeModel.build(apps, config, scores, homeBroken = !HomeHealth.isEnabled(this)) to Suggester.next(apps, config, scores, ex)
         if (force || next != shown) {
             shown = next
             build(next.first, next.second)
@@ -284,14 +290,15 @@ class HomeActivity : Activity() {
             "Not now" to { save(config.decline(s)); refresh(force = true, reload = false) },
         )
         val pad = 1f * vw; val gap = 1.5f * vw
-        val views = buttons.map { (label, _) -> text(regular, 1.4f, DIM).apply { text = label; setPadding(pad.toInt(), 0, pad.toInt(), 0) } }
+        val vpad = 0.4f * vw // room for the focus pill
+        val views = buttons.map { (label, _) -> text(regular, 1.4f, DIM).apply { text = label; setPadding(pad.toInt(), vpad.toInt(), pad.toInt(), vpad.toInt()) } }
         val widths = views.map { it.paint.measureText(it.text.toString()) + 2 * pad }
         var x = (w - widths.sum() - gap * (views.size - 1)) / 2
         val centres = mutableListOf<Float>()
         views.forEachIndexed { i, v ->
             body.addView(v, FrameLayout.LayoutParams(widths[i].toInt() + 1, -2).apply {
                 leftMargin = x.toInt()
-                topMargin = (top + 3f * vw).toInt()
+                topMargin = (top + 3f * vw - vpad).toInt()
             })
             centres += x + widths[i] / 2
             x += widths[i] + gap
@@ -334,7 +341,10 @@ class HomeActivity : Activity() {
     private fun show(r: Int, c: Int, on: Boolean, animate: Boolean = true) {
         when (val v = items[r][c].view) {
             is TileView -> if (animate) v.focus(on) else v.set(if (on) 1f else 0f)
-            is TextView -> v.setTextColor(if (on) Theme.ACCENT else DIM)
+            is TextView -> {
+                v.setTextColor(if (on) Theme.ACCENT else DIM)
+                v.background = if (on) GradientDrawable().apply { setColor(FOCUS_BG); cornerRadius = 10 * vw } else null // clamped to a pill
+            }
         }
         if (on) tier2Box?.alpha = if (r == items.lastIndex) 1f else 0.35f
     }

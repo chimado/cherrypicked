@@ -21,6 +21,16 @@ class ConfigStoreTest {
         assertEquals(c, s.load())
     }
 
+    @Test fun loadSeesAnotherWriter() {
+        val s = ConfigStore(tmp.root)
+        s.save(Config(mainApp = "old"))
+        val f = File(tmp.root, "config.json")
+        val before = f.lastModified()
+        ConfigStore(tmp.root).save(Config(mainApp = "new")) // e.g. the :setup process
+        f.setLastModified(before + 2000) // same-millisecond writes would look unchanged
+        assertEquals("new", s.load().mainApp)
+    }
+
     @Test fun corruptFileFallsBackAndIsKept() {
         File(tmp.root, "config.json").writeText("{nope")
         assertEquals(Config(), ConfigStore(tmp.root).load())

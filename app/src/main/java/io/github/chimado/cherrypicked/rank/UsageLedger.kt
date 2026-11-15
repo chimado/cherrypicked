@@ -13,7 +13,17 @@ const val MAX_EVENTS_PER_APP = 50
 private const val HOUR_MS = 3600_000L
 
 class UsageLedger(private val file: File) {
-    private fun read(): Map<String, List<Long>> = try {
+    private var cache: Map<String, List<Long>> = emptyMap()
+    private var cacheAt = 0L // lastModified of the file [cache] came from; 0 = none
+
+    /** Parses only when the file changed since the last read or write. */
+    private fun read(): Map<String, List<Long>> {
+        val m = file.lastModified()
+        if (m != 0L && m == cacheAt) return cache
+        return parse().also { cache = it; cacheAt = m }
+    }
+
+    private fun parse(): Map<String, List<Long>> = try {
         val o = JSONObject(file.readText())
         o.keys().asSequence().associateWith { k ->
             val a = o.getJSONArray(k)
@@ -32,6 +42,8 @@ class UsageLedger(private val file: File) {
         m.forEach { (k, v) -> o.put(k, JSONArray(v)) }
         try {
             file.writeDurably(o.toString())
+            cache = m
+            cacheAt = file.lastModified()
         } catch (_: IOException) {
             // best-effort data: losing one launch must not break launching
         }

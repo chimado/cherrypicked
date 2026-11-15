@@ -119,7 +119,7 @@ internal fun autoOpen(ctx: Context, trigger: Trigger, fg: String?, tvInputs: Set
 }
 
 /** Packages that show TV inputs: passthrough (HDMI) handlers plus the live-channels app. */
-private fun tvInputPackages(ctx: Context): Set<String> {
+internal fun tvInputPackages(ctx: Context): Set<String> {
     val pm = ctx.packageManager
     val passthrough = pm.queryIntentActivities(Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput("x")), 0)
         .map { it.activityInfo.packageName }

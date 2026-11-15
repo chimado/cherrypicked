@@ -37,6 +37,18 @@ class SuggesterTest {
         assertNull(Suggester.next(apps, cfg.copy(mainApp = "z"), mapOf("a" to 9.0, "b" to 8.0)))
     }
 
+    @Test fun excludedNeverSuggested() {
+        val ex = setOf("b", "c")
+        assertEquals(Suggestion.MainApp(a), Suggester.next(apps, Config(), mapOf("a" to 3.0, "b" to 9.0, "c" to 8.0), ex))
+        assertNull(Suggester.next(apps, Config(mainApp = "z"), mapOf("b" to 9.0, "c" to 8.0), ex))
+    }
+
+    @Test fun declinedFavoriteNotRepeated() {
+        val cfg = Config(mainApp = "z").decline(Suggestion.Favorite(b))
+        assertEquals(Suggestion.Favorite(a), Suggester.next(apps, cfg, mapOf("a" to 3.0, "b" to 5.0)))
+        assertNull(Suggester.next(apps, cfg, mapOf("b" to 5.0)))
+    }
+
     @Test fun acceptMainSetsAutoOpen() {
         val r = Config().accept(Suggestion.MainApp(a))
         assertEquals("a", r.mainApp); assertTrue(r.autoOpen)

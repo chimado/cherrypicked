@@ -11,9 +11,10 @@ sealed interface Suggestion {
 object Suggester {
     const val MIN_SCORE = 3.0
 
-    fun next(apps: List<AppEntry>, config: Config, scores: Map<String, Double>): Suggestion? {
+    /** [excluded]: packages never worth proposing (other launchers, the TV-input app). */
+    fun next(apps: List<AppEntry>, config: Config, scores: Map<String, Double>, excluded: Set<String> = emptySet()): Suggestion? {
         fun best(ok: (AppEntry) -> Boolean) = apps
-            .filter { it.pkg !in config.hidden && (scores[it.pkg] ?: 0.0) >= MIN_SCORE && ok(it) }
+            .filter { it.pkg !in config.hidden && it.pkg !in excluded && (scores[it.pkg] ?: 0.0) >= MIN_SCORE && ok(it) }
             .maxByOrNull { scores[it.pkg] ?: 0.0 }
         // A declined top pick means no main-app prompt at all, not a runner-up.
         if (config.mainApp == null) best { true }?.takeIf { "main:${it.pkg}" !in config.declined }?.let { return Suggestion.MainApp(it) }

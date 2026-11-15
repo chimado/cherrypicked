@@ -6,8 +6,17 @@ import java.io.IOException
 
 class ConfigStore(private val dir: File) {
     private val file get() = File(dir, "config.json")
+    private var loaded = Config()
+    private var loadedAt = 0L // lastModified of the file [loaded] came from; 0 = none
 
+    /** Parses only when the file changed since the last load or save through this store. */
     fun load(): Config {
+        val m = file.lastModified()
+        if (m != 0L && m == loadedAt) return loaded
+        return parse().also { loaded = it; loadedAt = m }
+    }
+
+    private fun parse(): Config {
         if (!file.exists()) return Config()
         return try {
             Config.fromJson(file.readText())
@@ -23,7 +32,11 @@ class ConfigStore(private val dir: File) {
         try { file.copyTo(File(dir, "config.json.bad"), overwrite = true) } catch (_: IOException) {}
     }
 
-    fun save(c: Config) = file.writeDurably(c.toJson())
+    fun save(c: Config) {
+        file.writeDurably(c.toJson())
+        loaded = c
+        loadedAt = file.lastModified()
+    }
 }
 
 /** Writes via `<name>.tmp`, fsyncs it, then renames over this file, so a power cut leaves the old or the new content. */
