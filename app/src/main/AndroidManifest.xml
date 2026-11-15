@@ -24,6 +24,15 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="content" android:host="android.media.tv" />
         </intent>
+        <!-- Live-TV apps filter on the resolved TvProvider type; visibility matching needs it spelled out. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="vnd.android.cursor.item/channel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="vnd.android.cursor.dir/channel" />
+        </intent>
     </queries>
 
     <application

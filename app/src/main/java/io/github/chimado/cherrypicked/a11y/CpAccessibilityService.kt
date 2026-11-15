@@ -74,7 +74,7 @@ class CpAccessibilityService : AccessibilityService() {
     }
 }
 
-/** Runs the auto-open decision and launches the result; returns the package opened, if any. */
+/** Runs the auto-open decision and launches the result; returns the package decided, if any (logs a failed launch). */
 internal fun autoOpen(ctx: Context, trigger: Trigger, fg: String?, tvInputs: Set<String>): String? {
     val config = ConfigStore(ctx.filesDir).load()
     val pm = ctx.packageManager
@@ -83,7 +83,8 @@ internal fun autoOpen(ctx: Context, trigger: Trigger, fg: String?, tvInputs: Set
         ?.takeIf { pm.getLeanbackLaunchIntentForPackage(it) != null || pm.getLaunchIntentForPackage(it) != null }
         ?.let(::setOf) ?: emptySet()
     val pkg = AutoOpenPolicy.decide(trigger, config, installed, fg, tvInputs) ?: return null
-    return pkg.takeIf { AppCatalog(ctx).launch(it) }
+    if (!AppCatalog(ctx).launch(pkg)) Log.w("CP", "launch failed $pkg") // launch() catches and returns false
+    return pkg
 }
 
 /** Packages that show TV inputs: passthrough (HDMI) handlers plus the live-channels app. */
@@ -93,5 +94,5 @@ private fun tvInputPackages(ctx: Context): Set<String> {
         .map { it.activityInfo.packageName }
     val channels = pm.resolveActivity(Intent(Intent.ACTION_VIEW, TvContract.Channels.CONTENT_URI), 0)
         ?.activityInfo?.packageName?.takeIf { it != "android" } // "android" = the chooser, not an app
-    return (passthrough + listOfNotNull(channels)).toSet()
+    return (passthrough + listOfNotNull(channels)).toSet().also { Log.i("CP", "tvInputs=${it.joinToString(",")}") }
 }
