@@ -4,7 +4,7 @@
 |---|---|
 | "Screen off" route: `performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)` | ✅ The TV goes to sleep (checked via the test hook, 2026-11-15 03:50). |
 | Home on the physical remote → Cherrypicked | ✅ Checked by the owner, phase 1 and 2. |
-| Vendor buttons (Netflix, YouTube, Prime Video, Input, …) | ⏳ Pending the owner's probe with Setup → Button test (see `morning-checklist.md`). |
+| Vendor buttons (Netflix, YouTube, Prime Video, Input, …) | ⏳ Pending the owner's probe with Setup → Button test. |
 
 **Driving the TV over adb:**
 - Shell-injected keys (`adb shell input keyevent`) skip accessibility key filtering, so they can't test remaps.

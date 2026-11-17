@@ -6,3 +6,7 @@ dist/
 tools/results/
 bench/dist/
 *.apk
+# Private working notes
+docs/superpowers/
+docs/design/morning-checklist.md
+docs/design/tv-default-setup.md
