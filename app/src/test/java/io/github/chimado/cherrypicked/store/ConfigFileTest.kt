@@ -36,6 +36,15 @@ class ConfigFileTest {
         assertEquals(ImportCheck.Refused("This file is from a newer Cherrypicked"), checkImport("""{"version":99}""", emptySet(), ::label))
     }
 
+    @Test fun garbageMentioningNewerIsNotANewerFile() {
+        assertEquals(ImportCheck.Refused("This file isn't a Cherrypicked setup"), checkImport("{newer", emptySet(), ::label))
+    }
+
+    @Test fun refusesHugeLists() {
+        val c = Config(favorites = List(MAX_IMPORT_ENTRIES + 1) { "p$it" })
+        assertEquals(ImportCheck.Refused("This file isn't a Cherrypicked setup"), checkImport(c.toJson(), emptySet(), ::label))
+    }
+
     @Test fun refusesNoWayHome() {
         val c = Config(remaps = listOf(Remap(3, Press.SINGLE, Action.Nothing)))
         assertEquals(ImportCheck.Refused("This setup leaves no way back to Cherrypicked"), checkImport(c.toJson(), emptySet(), ::label))

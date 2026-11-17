@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-25-openjdk}"
+[ -n "${JAVA_HOME:-}" ] || { [ -d /usr/lib/jvm/java-25-openjdk ] && export JAVA_HOME=/usr/lib/jvm/java-25-openjdk; } || true # else gradle finds java on PATH
 rm -rf app/build
 ./gradlew --no-daemon assembleRelease
 mkdir -p dist

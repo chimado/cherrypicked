@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Measure Cherrypicked on the TV: tools/measure.sh   (installs dist/cherrypicked.apk)
+# Measure Cherrypicked on the TV: TV=<tv-ip>:5555 tools/measure.sh   (installs dist/cherrypicked.apk)
 # Results go to tools/results/cherrypicked.txt plus a screenshot.
 # ponytail: throwaway spike harness, no retries or statistics beyond median/p95.
 set -uo pipefail
 cd "$(dirname "$0")"
-A=~/Android/Sdk/platform-tools/adb; S=TV_IP:5555
+A=${ADB:-~/Android/Sdk/platform-tools/adb}; S=${TV:?set TV=<tv-ip>:5555}
 # This TV's wireless adb drops often ("offline"/"closed"): reconnect and retry.
 ad() {
   local o i

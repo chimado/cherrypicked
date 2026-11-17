@@ -166,8 +166,8 @@ class CpAccessibilityService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }, RECEIVER_NOT_EXPORTED)
-        registerReceiver(learnRx, IntentFilter(KeyLearn.ACTION_START), RECEIVER_NOT_EXPORTED)
-        registerReceiver(configRx, IntentFilter(KeyLearn.ACTION_CONFIG_CHANGED), RECEIVER_NOT_EXPORTED)
+        registerReceiver(learnRx, IntentFilter(KeyLearn.ACTION_START), KeyLearn.PERMISSION, null, RECEIVER_NOT_EXPORTED)
+        registerReceiver(configRx, IntentFilter(KeyLearn.ACTION_CONFIG_CHANGED), KeyLearn.PERMISSION, null, RECEIVER_NOT_EXPORTED)
         // Exported because the sender is the shell uid; DUMP keeps normal apps out.
         registerReceiver(testHook, IntentFilter(TestHook.ACTION), "android.permission.DUMP", handler, RECEIVER_EXPORTED)
         registered = true

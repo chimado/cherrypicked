@@ -41,6 +41,11 @@ class UsageLedgerTest {
         assertEquals(3.0, s["b"]!!, 1e-9)
     }
 
+    @Test fun partialForegroundHoursCount() {
+        val s = UsageLedger(file()).scores(t, mapOf("b" to 90 * 60_000L))
+        assertEquals(1.5, s["b"]!!, 1e-9)
+    }
+
     @Test fun corruptFileReadsEmpty() {
         file().writeText("{not json")
         val l = UsageLedger(file())
