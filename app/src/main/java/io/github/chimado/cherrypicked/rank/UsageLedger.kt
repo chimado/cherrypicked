@@ -55,7 +55,7 @@ class UsageLedger(private val file: File) {
             out[pkg] = ts.sumOf { 0.5.pow((nowMs - it).coerceAtLeast(0).toDouble() / HALF_LIFE_MS) }
         }
         foregroundMsLast14d.forEach { (pkg, ms) ->
-            out[pkg] = (out[pkg] ?: 0.0) + (ms / HOUR_MS).toDouble()
+            out[pkg] = (out[pkg] ?: 0.0) + ms.toDouble() / HOUR_MS
         }
         return out
     }

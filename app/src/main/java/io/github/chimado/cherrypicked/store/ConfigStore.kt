@@ -13,10 +13,11 @@ class ConfigStore(private val dir: File) {
     fun load(): Config {
         val m = file.lastModified()
         if (m != 0L && m == loadedAt) return loaded
-        return parse().also { loaded = it; loadedAt = m }
+        return (parse() ?: return Config()).also { loaded = it; loadedAt = m }
     }
 
-    private fun parse(): Config {
+    /** null = unreadable right now: use defaults for this call but cache nothing, so a later save can't persist them. */
+    private fun parse(): Config? {
         if (!file.exists()) return Config()
         return try {
             Config.fromJson(file.readText())
@@ -24,7 +25,7 @@ class ConfigStore(private val dir: File) {
             keepBad()
             Config()
         } catch (e: IOException) {
-            Config() // never crash boot on unreadable config
+            null // never crash boot on unreadable config
         }
     }
 

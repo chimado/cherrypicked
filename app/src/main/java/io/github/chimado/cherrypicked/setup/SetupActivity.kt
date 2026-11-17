@@ -128,7 +128,7 @@ class SetupActivity : Activity() {
             addView(list)
         }
         setContentView(scroll)
-        registerReceiver(learnRx, IntentFilter(KeyLearn.ACTION_RESULT), RECEIVER_NOT_EXPORTED)
+        registerReceiver(learnRx, IntentFilter(KeyLearn.ACTION_RESULT), KeyLearn.PERMISSION, null, RECEIVER_NOT_EXPORTED)
         render(null, intent.getStringExtra("section"))
     }
 

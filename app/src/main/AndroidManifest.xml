@@ -10,6 +10,10 @@
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Guards the broadcasts between our own processes (see KeyLearn). -->
+    <permission android:name="io.github.chimado.cherrypicked.INTERNAL" android:protectionLevel="signature" />
+    <uses-permission android:name="io.github.chimado.cherrypicked.INTERNAL" />
+
     <!-- Optional: lets the :ui process draw the panel and notices; never prompted for (in-process fallback without it). -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
@@ -95,7 +99,7 @@
             android:process=":ui" />
         <receiver
             android:name=".a11y.BootReceiver"
-            android:exported="true"
+            android:exported="false"
             android:process=":a11y">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

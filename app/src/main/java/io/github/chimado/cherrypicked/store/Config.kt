@@ -10,6 +10,7 @@ import org.json.JSONException
 import org.json.JSONObject
 
 class ConfigFormatException(msg: String) : Exception(msg)
+const val NEWER_VERSION = "newer config version" // the one ConfigFormatException message callers tell apart
 
 val DEFAULT_REMAPS = listOf(Remap(3, Press.LONG, Action.QuickPanel))
 
@@ -49,7 +50,7 @@ fun Config.toJson(): String = JSONObject().apply {
 fun Config.Companion.fromJson(s: String): Config = try {
     val o = JSONObject(s)
     val d = Config()
-    if (o.has("version") && o.getInt("version") > 1) throw JSONException("newer config version")
+    if (o.has("version") && o.getInt("version") > 1) throw JSONException(NEWER_VERSION)
     fun strings(k: String): List<String>? = if (!o.has(k)) null else o.getJSONArray(k).let { a ->
         List(a.length()) { i -> a.get(i) as? String ?: throw JSONException("$k[$i] not a string") }
     }
