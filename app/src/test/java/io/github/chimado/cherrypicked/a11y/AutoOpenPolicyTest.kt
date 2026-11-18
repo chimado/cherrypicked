@@ -2,7 +2,9 @@ package io.github.chimado.cherrypicked.a11y
 
 import io.github.chimado.cherrypicked.store.Config
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AutoOpenPolicyTest {
@@ -24,4 +26,9 @@ class AutoOpenPolicyTest {
     @Test fun wakeWithUnknownForegroundDoesNothing() = assertNull(decide(Trigger.WAKE, fg = null))
     @Test fun bootIgnoresUnknownForeground() = assertEquals("com.main", decide(Trigger.BOOT, fg = null))
     @Test fun wakeAlreadyInMainDoesNothing() = assertNull(decide(Trigger.WAKE, fg = "com.main"))
+
+    // The remote's power button makes the TV start home as it wakes, after the screen-on check has run.
+    @Test fun homeSoonAfterWakeRechecks() = assertTrue(AutoOpenPolicy.recheckOnHome("me", "me", 400))
+    @Test fun homeLongAfterWakeDoesNot() = assertFalse(AutoOpenPolicy.recheckOnHome("me", "me", 2500))
+    @Test fun otherAppAfterWakeDoesNot() = assertFalse(AutoOpenPolicy.recheckOnHome("com.x", "me", 400))
 }

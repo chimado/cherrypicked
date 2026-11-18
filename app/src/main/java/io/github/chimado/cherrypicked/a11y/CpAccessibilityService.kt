@@ -35,6 +35,7 @@ import java.io.IOException
 class CpAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastWindowPkg: String? = null
+    private var wakeAt = -1L // uptime of the last screen on, until our home's first showing after it
     private var registered = false
     private val tvInputPackages by lazy { tvInputPackages(this) }
 
@@ -118,6 +119,7 @@ class CpAccessibilityService : AccessibilityService() {
             Log.i("CP", "${i.action?.substringAfterLast('.')} pid=${Process.myPid()} t=${SystemClock.elapsedRealtime()}")
             if (i.action == Intent.ACTION_SCREEN_OFF) { current?.closePanel(); current?.dismissNotice(); if (remoteLazy.isInitialized()) remote.dismissNotice(); if (inProcessLazy.isInitialized()) inProcess.dismissNotice() } // a notice must not reappear on wake
             if (i.action == Intent.ACTION_SCREEN_OFF && sleepEndMs != null) { Log.i("CP", "sleep cleared (screen off)"); saveSleep(null) } // uptime pauses in sleep: a stale timer would fire after wake
+            wakeAt = if (i.action == Intent.ACTION_SCREEN_ON) SystemClock.uptimeMillis() else -1L
             if (i.action == Intent.ACTION_SCREEN_ON) refreshRemaps()
             // No wait on wake: open main as the screen goes off, so it is already up when the TV turns on; check
             // again on wake in case that open didn't stick. A TV that sleeps on an input is left on it both times.
@@ -237,6 +239,10 @@ class CpAccessibilityService : AccessibilityService() {
         try {
             packageManager.getActivityInfo(ComponentName(pkg, cls), 0)
             lastWindowPkg = pkg
+            if (wakeAt >= 0 && AutoOpenPolicy.recheckOnHome(pkg, packageName, SystemClock.uptimeMillis() - wakeAt)) {
+                wakeAt = -1L
+                handler.post(wakeCheck)
+            }
         } catch (_: PackageManager.NameNotFoundException) {}
     }
 
