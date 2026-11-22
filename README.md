@@ -34,14 +34,15 @@ Android 12.
 
 ## Install
 
-There is no prebuilt APK yet. [Build it](#build), then sideload it:
+Download `cherrypicked.apk` from the [latest release](https://github.com/chimado/cherrypicked/releases/latest),
+or [build it](#build), then sideload it:
 
 ```bash
 adb connect <tv-ip>:5555
 ```
 
 ```bash
-adb install -r dist/cherrypicked.apk
+adb install -r cherrypicked.apk
 ```
 
 ### The Home button
