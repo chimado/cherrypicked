@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the release APK (R8, debug-signed) from scratch -> dist/cherrypicked.apk
+# Builds the release APK (R8) from scratch -> dist/cherrypicked.apk
+# Signed with the key in ~/.config/cherrypicked-release/keystore.properties if that exists, else the local debug key.
 set -euo pipefail
 cd "$(dirname "$0")"
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
@@ -9,3 +10,4 @@ rm -rf app/build
 mkdir -p dist
 cp app/build/outputs/apk/release/app-release.apk dist/cherrypicked.apk
 ls -l dist/cherrypicked.apk
+[ -f "$HOME/.config/cherrypicked-release/keystore.properties" ] && echo "signed: release key" || echo "signed: local debug key"

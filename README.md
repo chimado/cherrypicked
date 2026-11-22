@@ -116,7 +116,10 @@ You need JDK 17 or newer and the Android SDK with platform 36. `ANDROID_HOME` de
 The APK is written to `dist/cherrypicked.apk`. It is signed with your local debug key. That works for
 sideloading onto your own TV, but a build from one machine can't update a build from another.
 
-To run the unit tests, lint and the release build together, as CI does:
+To sign with your own key instead, create `~/.config/cherrypicked-release/keystore.properties` with
+`storeFile`, `storePassword`, `keyAlias` and `keyPassword`. A relative `storeFile` is read from that directory.
+
+To run the unit tests, lint and the release build together:
 
 ```bash
 scripts/ci-local.sh
@@ -145,7 +148,7 @@ to plain Views.
 | `app/` | The app: Kotlin and platform Views |
 | `docs/design/` | Design notes and measurements from the TV |
 | `tools/measure.sh` | Start-up, memory and frame-time measurements over adb |
-| `scripts/ci-local.sh` | The checks CI runs |
+| `scripts/ci-local.sh` | Unit tests, lint and the release build |
 
 ## License
 
