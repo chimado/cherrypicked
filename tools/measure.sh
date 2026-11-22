@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Measure Cherrypicked on the TV: TV=<tv-ip>:5555 tools/measure.sh   (installs dist/cherrypicked.apk)
+# Measure Cherrypicked on the TV: TV=<tv-ip>:5555 [HOME_APP=<pkg/activity>] tools/measure.sh   (installs dist/cherrypicked.apk)
 # Results go to tools/results/cherrypicked.txt plus a screenshot.
 # ponytail: throwaway spike harness, no retries or statistics beyond median/p95.
 set -uo pipefail
@@ -15,13 +15,14 @@ ad() {
   printf '%s\n' "$o"; return 1
 }
 name=cherrypicked; P=io.github.chimado.cherrypicked; apk=../dist/cherrypicked.apk
-HOME_APP=com.spocky.projengmenu/.ui.home.MainActivity
+# The launcher the TV normally runs; the script only measures while it (or Cherrypicked) is in front, and returns to it.
+HOME_APP=${HOME_APP:-com.spocky.projengmenu/.ui.home.MainActivity}
 mkdir -p results; out=results/$name.txt; : > "$out"
 log() { echo "$*" | tee -a "$out"; }
 
 front() { ad shell dumpsys activity activities | grep -m1 -E 'ResumedActivity' ; }
-# The user's rule: hands off unless the TV sits idle on Projectivy (or on one of our bench apps).
-f=$(front); grep -qE 'projengmenu|io\.github\.chimado\.cherrypicked' <<<"$f" || { echo "TV is in use: $f"; exit 3; }
+# Hands off unless the TV sits idle on a launcher: never interrupt someone watching.
+f=$(front); grep -qF -e "${HOME_APP%%/*}" -e io.github.chimado.cherrypicked <<<"$f" || { echo "TV is in use: $f"; exit 3; }
 
 pss() { ad shell dumpsys meminfo "$P" | awk '/TOTAL PSS:/{print $3; exit}'; }
 median() { sort -n | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}'; }

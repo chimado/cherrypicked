@@ -3,9 +3,11 @@
 <img src="docs/design/logo/2-focus-ring-banner.png" alt="Cherrypicked" width="320">
 
 A small, fast launcher for Android TV / Google TV, for people who use a handful of apps.
-No ads, no recommendations, no accounts, no network access, no dependencies beyond the Android SDK.
+No ads, no recommendations, no accounts, no network access, no third-party libraries (only the Android SDK and the Kotlin standard library).
 
-![Home screen](docs/design/tv-home-favorite.png)
+![Home screen design](docs/design/reference.png)
+
+*The design reference for the home screen.*
 
 ## What it does
 
@@ -55,10 +57,13 @@ first (`adb shell settings get secure enabled_accessibility_services`) if you us
 The accessibility service is used only to see remote key presses (Home, remapped buttons) and which app is
 in front. Nothing leaves the device: the app does not request the `INTERNET` permission.
 
+The service also has a diagnostic hook (`TestHook`) for testing over adb. It requires the `DUMP` permission,
+so only the adb shell or root can use it, not other apps.
+
 ## Layout
 
 - `app/` — the app; plain Kotlin and platform Views
-- `docs/design/` — design notes, measurements and screenshots from the reference TV
+- `docs/design/` — design notes and measurements from the reference TV
 - `tools/measure.sh` — start-up, memory and frame-time measurements over adb
 
 ## License
