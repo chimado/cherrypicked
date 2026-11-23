@@ -21,7 +21,7 @@ fun checkImport(text: String, installed: Set<String>, label: (String) -> String)
         return ImportCheck.Refused("This file isn't a Cherrypicked setup")
     }
     // Setup builds one row per entry; a huge list would hang it on every open.
-    if (maxOf(c.favorites.size, c.hidden.size, c.declined.size, c.remaps.size) > MAX_IMPORT_ENTRIES) return ImportCheck.Refused("This file isn't a Cherrypicked setup")
+    if (maxOf(maxOf(c.favorites.size, c.hidden.size, c.declined.size, c.remaps.size), c.frozenRow.size, c.inputNames.size) > MAX_IMPORT_ENTRIES) return ImportCheck.Refused("This file isn't a Cherrypicked setup")
     // Only remaps Setup itself could make: the engine ignores nav keys, so a Home/QuickPanel remap there isn't a way home.
     if (!c.remaps.all { canRemap(it.keyCode, it.press, c.remaps) }) return ImportCheck.Refused("This file has button settings Cherrypicked can't use")
     if (!hasWayHome(c.remaps)) return ImportCheck.Refused("This setup leaves no way back to Cherrypicked")
@@ -32,6 +32,7 @@ fun checkImport(text: String, installed: Set<String>, label: (String) -> String)
         "Open main app on start: " + if (c.autoOpen) "On" else "Off",
         "Hidden apps: ${c.hidden.size}",
         "Buttons: ${c.remaps.size}",
+        "Simple mode: " + if (c.pin != null) "On" else "Off",
         palette(c).let { "Appearance: ${it.pattern}, ${it.accentName}, ${it.baseName}" },
     ))
 }

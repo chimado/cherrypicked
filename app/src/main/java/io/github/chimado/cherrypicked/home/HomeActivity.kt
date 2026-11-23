@@ -209,7 +209,7 @@ class HomeActivity : Activity() {
             date.setTextColor(Theme.FAINT)
             hint.setTextColor(Theme.FAINT)
         }
-        val inputs = InputCatalog(this).inputs() // one cheap binder call; never cached, so renames/hot-plug show up
+        val inputs = InputCatalog(this).inputs().named(config) // one cheap binder call; never cached, so renames/hot-plug show up
         val apps = apps ?: catalog.apps().also { apps = it }
         val now = System.currentTimeMillis()
         // Usage stats can take tens of ms; ranking drifts slowly, so 10 min staleness is fine.
@@ -222,7 +222,7 @@ class HomeActivity : Activity() {
             shown = next
             build(next.first, next.second)
         }
-        if (!config.hintShown && !hintPending) {
+        if (!config.hintShown && !hintPending && config.pin == null) { // simple mode shows no hints
             hintPending = true
             hint.visibility = View.VISIBLE
             handler.postDelayed(hideHint, 8_000)
@@ -343,7 +343,7 @@ class HomeActivity : Activity() {
             } catch (e: RuntimeException) { Log.w(TAG, "input ${t.input.id} not opened", e) } // ActivityNotFound / Security
             Tile.AllApps -> open(ALL_APPS)
             Tile.Setup -> open(SETUP)
-            Tile.PickFavorites -> open(SETUP, "favorites")
+            Tile.PickFavorites -> open(SETUP, "edit-favorites")
             Tile.FixHome -> open(SETUP, "home")
         }
     }

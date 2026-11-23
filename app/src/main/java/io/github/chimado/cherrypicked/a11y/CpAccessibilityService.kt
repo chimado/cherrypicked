@@ -17,6 +17,8 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import io.github.chimado.cherrypicked.apps.AppCatalog
+import io.github.chimado.cherrypicked.apps.tryLaunch
+import io.github.chimado.cherrypicked.inputs.InputCatalog
 import io.github.chimado.cherrypicked.keys.Action
 import io.github.chimado.cherrypicked.keys.Effect
 import io.github.chimado.cherrypicked.keys.KeyNames
@@ -110,7 +112,7 @@ class CpAccessibilityService : AccessibilityService() {
 
     private val wakeCheck = Runnable {
         val fg = lastWindowPkg
-        val pkg = autoOpen(this, Trigger.WAKE, fg, tvInputPackages)
+        val pkg = autoOpen(this, Trigger.WAKE, fg, tvInputPackages, screenOn = wakeAt >= 0)
         Log.i("CP", "wake fg=$fg open=$pkg")
     }
 
@@ -280,16 +282,23 @@ class CpAccessibilityService : AccessibilityService() {
 private const val BOOT_WINDOW_MS = 10 * 60_000L
 
 /** Runs the auto-open decision and launches the result; returns the package decided, if any (logs a failed launch). */
-internal fun autoOpen(ctx: Context, trigger: Trigger, fg: String?, tvInputs: Set<String>): String? {
+internal fun autoOpen(ctx: Context, trigger: Trigger, fg: String?, tvInputs: Set<String>, screenOn: Boolean = true): String? {
     val config = ConfigStore(ctx.filesDir).load()
+    if (!screenOn && config.mainApp?.let(AutoOpenPolicy::opensAtScreenOff) == false) return null
     val pm = ctx.packageManager
     // Only mainApp matters, so no full app-list query in :a11y.
+    val inputId = config.mainApp?.takeIf { it.startsWith("input:") }?.removePrefix("input:")
     val installed = config.mainApp
-        ?.takeIf { pm.getLeanbackLaunchIntentForPackage(it) != null || pm.getLaunchIntentForPackage(it) != null }
+        ?.takeIf {
+            if (inputId != null) InputCatalog(ctx).inputs().any { i -> i.id == inputId }
+            else pm.getLeanbackLaunchIntentForPackage(it) != null || pm.getLaunchIntentForPackage(it) != null
+        }
         ?.let(::setOf) ?: emptySet()
-    val pkg = AutoOpenPolicy.decide(trigger, config, installed, fg, tvInputs) ?: return null
-    if (!AppCatalog(ctx).launch(pkg)) Log.w("CP", "launch failed $pkg") // launch() catches and returns false
-    return pkg
+    val main = AutoOpenPolicy.decide(trigger, config, installed, fg, tvInputs) ?: return null
+    val opened = if (inputId == null) AppCatalog(ctx).launch(main) // launch() catches and returns false
+        else tryLaunch(InputCatalog(ctx).launchIntent(inputId)) { ctx.startActivity(it) }
+    if (!opened) Log.w("CP", "launch failed $main")
+    return main
 }
 
 /** Packages that show TV inputs: passthrough (HDMI) handlers plus the live-channels app. */

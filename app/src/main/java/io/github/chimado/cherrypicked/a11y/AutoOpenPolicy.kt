@@ -12,6 +12,12 @@ object AutoOpenPolicy {
         windowPkg == self && sinceWakeMs in 0..HOME_AFTER_WAKE_MS
 
     /**
+     * The main app is opened early, as the screen goes off, so it is up when the TV turns on. Not an input: selecting
+     * a console's port can power the console on, which can wake the TV again.
+     */
+    fun opensAtScreenOff(main: String) = !main.startsWith("input:")
+
+    /**
      * Package to open, or null. A wake onto a TV input (HDMI/CEC took the screen), already in main, or with an
      * unknown foreground does nothing: when in doubt, never take the screen.
      */

@@ -32,3 +32,20 @@ class AutoOpenPolicyTest {
     @Test fun homeLongAfterWakeDoesNot() = assertFalse(AutoOpenPolicy.recheckOnHome("me", "me", 2500))
     @Test fun otherAppAfterWakeDoesNot() = assertFalse(AutoOpenPolicy.recheckOnHome("com.x", "me", 400))
 }
+
+class InputMainTest {
+    private val c = Config(mainApp = "input:h1", autoOpen = true)
+    private val tv = setOf("com.tcl.tv")
+    private fun decide(t: Trigger, fg: String?, listed: Boolean = true) =
+        AutoOpenPolicy.decide(t, c, if (listed) setOf("input:h1") else emptySet(), fg, tv)
+
+    @Test fun bootOpensTheInput() = assertEquals("input:h1", decide(Trigger.BOOT, null))
+    @Test fun wakeFromAnAppOpensTheInput() = assertEquals("input:h1", decide(Trigger.WAKE, "com.other"))
+    @Test fun wakeOnAnyInputIsLeftAlone() = assertNull(decide(Trigger.WAKE, "com.tcl.tv"))
+    // Switching to a console's port as the TV goes off can wake the console, and with it the TV.
+    @Test fun inputIsNotOpenedAsTheScreenGoesOff() {
+        assertFalse(AutoOpenPolicy.opensAtScreenOff("input:h1"))
+        assertTrue(AutoOpenPolicy.opensAtScreenOff("com.main"))
+    }
+    @Test fun unlistedInputDoesNothing() = assertNull(decide(Trigger.BOOT, null, listed = false))
+}

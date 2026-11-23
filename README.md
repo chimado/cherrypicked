@@ -27,6 +27,10 @@ dependencies, and the APK is about 660 KB.
   The patterns are drawn in code, so there is no wallpaper image held in memory.
 - Offers to add an app to favorites, or to make it the main app, once you use it a lot. Decline and it
   won't ask about that app again.
+- Gives an HDMI input a name of your own ("Console" instead of "HDMI 1"), and lets an input be a favorite
+  or the main app.
+- Has a simple mode for a TV used by kids or by someone who should never have to deal with settings. See
+  [Simple mode](#simple-mode).
 - Exports the whole setup to one JSON file and imports it back.
 
 It needs Android 12 (API 31) or newer. So far it has been tested on one TV, a TCL Google TV running
@@ -85,6 +89,10 @@ If the TV has no settings screen for one of them, Setup shows the adb command to
 
 Everything is configured in Setup, which is a tile on the home screen and the last row of the quick panel.
 
+Favorites are edited on a screen that looks like the home screen. Press OK on a favorite to pick it up,
+then Left and Right to move it, or Down to rename it (inputs only), make it the main app, or remove it. The
+row below holds every app you haven't hidden and every input; OK adds one.
+
 Export writes `cherrypicked.json` to the app's external files directory, and Import reads the same file:
 
 ```bash
@@ -96,6 +104,22 @@ adb push cherrypicked.json /sdcard/Android/data/io.github.chimado.cherrypicked/f
 ```
 
 Import shows a summary of what will change and asks before applying it.
+
+## Simple mode
+
+Simple mode locks the launcher behind a four-digit PIN. Turn it on at the top of Setup. While it is on:
+
+- Setup asks for the PIN, however you get to it.
+- The home screen stops offering suggestions and hints.
+- The lower row keeps the apps it had when you turned simple mode on. It no longer follows what gets used.
+
+Favorites, the Apps list and the quick panel work as before.
+
+If the PIN is lost, press Up, Up, Down, Down, Left, Right, Left, Right, Back, OK on the PIN screen. That
+opens Setup, where you can change the PIN or turn simple mode off.
+
+This is a guard against accidents, not security. The PIN is stored as plain text and is part of an exported
+setup, and the bypass above always works.
 
 ## What the accessibility service sees
 

@@ -17,7 +17,7 @@ class ConfigFileTest {
         )
         val r = checkImport(c.toJson(), setOf("a", "b"), ::label) as ImportCheck.Ok
         assertEquals(c, r.config)
-        assertEquals(listOf("Favorites: A, B", "Main app: A", "Open main app on start: On", "Hidden apps: 1", "Buttons: 2", "Appearance: Plain, Cherry, Graphite"), r.summary)
+        assertEquals(listOf("Favorites: A, B", "Main app: A", "Open main app on start: On", "Hidden apps: 1", "Buttons: 2", "Simple mode: Off", "Appearance: Plain, Cherry, Graphite"), r.summary)
     }
 
     @Test fun marksMissingApps() {
