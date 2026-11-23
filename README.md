@@ -52,6 +52,9 @@ adb connect <tv-ip>:5555
 adb install -r cherrypicked.apk
 ```
 
+Test builds of the `nightly` branch are published as pre-releases named `v<version>-nightly.<n>`. They can
+be broken. To follow them with Obtainium, turn on "Include prereleases" for Cherrypicked.
+
 ### The Home button
 
 Google TV has no setting for choosing a launcher, so Cherrypicked takes over the Home button with an
@@ -177,6 +180,7 @@ to plain Views.
 | `docs/design/` | Design notes and measurements from the TV |
 | `tools/measure.sh` | Start-up, memory and frame-time measurements over adb |
 | `scripts/ci-local.sh` | Unit tests, lint and the release build |
+| `scripts/nightly-release.sh` | Publishes the checked-out commit as a pre-release |
 
 ## License
 
