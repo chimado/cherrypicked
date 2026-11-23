@@ -9,6 +9,10 @@ There are no ads, recommendations or accounts. The app does not request the `INT
 cannot reach the network. It is built on the Android SDK and the Kotlin standard library with no other
 dependencies, and the APK is about 660 KB.
 
+**Tested on one TV so far**, a TCL Google TV running Android 12. Other TVs and Android versions may behave
+differently, most likely around the Home button, wake and HDMI inputs. If you try it on other hardware,
+please [open an issue](https://github.com/chimado/cherrypicked/issues) with what worked and what didn't.
+
 ![Home screen](docs/design/reference.png)
 
 *The home screen design.*
@@ -33,8 +37,7 @@ dependencies, and the APK is about 660 KB.
   [Simple mode](#simple-mode).
 - Exports the whole setup to one JSON file and imports it back.
 
-It needs Android 12 (API 31) or newer. So far it has been tested on one TV, a TCL Google TV running
-Android 12.
+It needs Android 12 (API 31) or newer.
 
 ## Install
 
