@@ -1,6 +1,10 @@
 package io.github.chimado.cherrypicked.setup
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.text.InputFilter
+import android.text.InputType
+import android.widget.EditText
 import android.app.AppOpsManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -31,6 +35,9 @@ import io.github.chimado.cherrypicked.home.AppEntry
 import io.github.chimado.cherrypicked.home.HomeModel
 import io.github.chimado.cherrypicked.home.PatternDrawable
 import io.github.chimado.cherrypicked.home.TvInput
+import io.github.chimado.cherrypicked.home.named
+import io.github.chimado.cherrypicked.rank.UsageLedger
+import io.github.chimado.cherrypicked.rank.foregroundLast14d
 import io.github.chimado.cherrypicked.inputs.InputCatalog
 import io.github.chimado.cherrypicked.keys.Action
 import io.github.chimado.cherrypicked.keys.KeyNames
@@ -42,6 +49,7 @@ import io.github.chimado.cherrypicked.store.ConfigStore
 import io.github.chimado.cherrypicked.store.CONFIG_FILE_NAME
 import io.github.chimado.cherrypicked.store.ImportCheck
 import io.github.chimado.cherrypicked.store.MAX_IMPORT_BYTES
+import io.github.chimado.cherrypicked.store.MAX_INPUT_NAME
 import io.github.chimado.cherrypicked.store.checkImport
 import io.github.chimado.cherrypicked.store.toJson
 import io.github.chimado.cherrypicked.store.writeDurably
@@ -64,8 +72,6 @@ private class Row(val text: String, val id: String? = null, val onSide: ((Int) -
 
 /** A sub-screen; leaving it focuses [opener], or the first row of [section] when that row is gone. */
 private sealed class Sub(val opener: String, val section: String) {
-    class FavActions(val pkg: String) : Sub("fav:$pkg", "favorites")
-    object PickFavorite : Sub("add-fav", "favorites")
     object PickMain : Sub("main", "autoopen")
     object Hidden : Sub("hidden", "hidden")
     object Appearance : Sub("appearance", "appearance")
@@ -82,7 +88,16 @@ class SetupActivity : Activity() {
     private lateinit var store: ConfigStore
     private lateinit var config: Config
     private lateinit var apps: List<AppEntry>
-    private lateinit var inputs: List<TvInput>
+    private lateinit var tvInputs: List<TvInput> // under the TV's own labels
+    private val inputs get() = tvInputs.named(config)
+    private var pad: PinPad? = null
+    private var editor: FavEditor? = null
+    private var gate = false // the pad on screen is the lock, not a new PIN being set
+    private var regate = false // left while locked: ask for the PIN again on return
+    private val konami = Konami()
+    private var simpleNote: String? = null
+    private var dialog: AlertDialog? = null
+    private var backDown = false // a Back we handled on its way down: swallow its repeats and its up
     private lateinit var scroll: ScrollView
     private lateinit var list: LinearLayout
     private lateinit var regular: Typeface
@@ -118,7 +133,7 @@ class SetupActivity : Activity() {
         config = store.load()
         Theme.load(config)
         apps = AppCatalog(this).apps().sortedBy { it.label.lowercase() }
-        inputs = InputCatalog(this).inputs()
+        tvInputs = InputCatalog(this).inputs()
         val b = windowManager.currentWindowMetrics.bounds
         vw = max(b.width(), b.height()) / 100f
         regular = Typeface.createFromAsset(assets, "Inter-Regular.ttf")
@@ -127,19 +142,142 @@ class SetupActivity : Activity() {
             background = baseBg()
             addView(list)
         }
-        setContentView(scroll)
         registerReceiver(learnRx, IntentFilter(KeyLearn.ACTION_RESULT), KeyLearn.PERMISSION, null, RECEIVER_NOT_EXPORTED)
-        render(null, intent.getStringExtra("section"))
+        if (config.pin != null) showGate() else enter()
+    }
+
+    /** Past the lock (or there is none): the list, or the editor when Home's "Pick favorites" tile sent us. */
+    private fun enter() {
+        val section = intent.getStringExtra("section")
+        intent.removeExtra("section") // only the first time in
+        if (section == "edit-favorites") showEditor() else showList(null, section)
+    }
+
+    private fun showList(focusId: String?, section: String?) {
+        pad = null; editor = null; gate = false
+        setContentView(scroll)
+        render(focusId, section)
+    }
+
+    private fun showPad(title: String, onPin: (String) -> Unit) {
+        dialog?.dismiss() // an open rename must not sit on top of the lock
+        editor = null
+        pad = PinPad(this, vw, regular, title, onPin).also { setContentView(it) }
+    }
+
+    /** Simple mode's lock. Nothing in Setup is reachable until the PIN, or the code in [Konami], is entered. */
+    private fun showGate() {
+        gate = true
+        showPad("Enter the PIN") { if (it == store.load().pin) enter() else pad?.ask("Enter the PIN", "Wrong PIN") }
+    }
+
+    private fun askNewPin() {
+        var first: String? = null
+        showPad("New PIN") { pin ->
+            when (first) {
+                null -> { first = pin; pad?.ask("Repeat the PIN") }
+                pin -> {
+                    // Changing the PIN keeps the row that was frozen when simple mode was turned on.
+                    val changed = config.pin != null
+                    edit { if (it.pin != null) it.lock(pin, it.frozenRow) else it.lock(pin, ranking(it)) }
+                    simpleNote = if (note != null) null else if (changed) "PIN changed" else "Simple mode is on"
+                    showList("simple-pin", "simple")
+                }
+                else -> { first = null; pad?.ask("New PIN", "The PINs didn't match") }
+            }
+        }
+    }
+
+    /** Every app in today's ranking, to freeze: the whole list, so the lower row stays full when favorites change. */
+    private fun ranking(c: Config): List<String> {
+        val scores = UsageLedger(File(filesDir, "usage.json")).scores(System.currentTimeMillis(), foregroundLast14d(this))
+        return HomeModel.rankAll(apps, c, scores).map { it.pkg }
+    }
+
+    /** Asks for an input's nickname; [done] runs after a save. */
+    private fun rename(i: TvInput, done: () -> Unit) {
+        val field = EditText(this).apply {
+            setText(config.inputNames[i.id].orEmpty())
+            hint = i.label
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            filters = arrayOf(InputFilter.LengthFilter(MAX_INPUT_NAME))
+            setSingleLine()
+            selectAll()
+        }
+        dialog = AlertDialog.Builder(this)
+            .setTitle("Name for ${i.label}")
+            .setMessage("Leave it empty to use the TV's name.")
+            .setView(field)
+            .setPositiveButton("Save") { _, _ -> edit { it.nameInput(i.id, field.text.toString()) }; done() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showEditor() {
+        pad = null
+        val b = windowManager.currentWindowMetrics.bounds
+        editor = FavEditor(this, max(b.width(), b.height()).toFloat(), kotlin.math.min(b.width(), b.height()).toFloat(), regular, apps, tvInputs,
+            { config }, ::edit, ::rename) { showList("edit-favs", "favorites") }.also { setContentView(it) }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // The saved config, not this instance's copy: another Setup opened on top may have turned the lock on.
+        if (regate && store.load().pin != null) showGate()
+        regate = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Any way out (Home, another app, a system settings screen) locks Setup again.
+        if (!isChangingConfigurations) regate = true
+    }
+
+    override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+        val k = e.keyCode
+        val down = e.action == KeyEvent.ACTION_DOWN
+        // A held Back must not act twice: once in the editor or on the lock, then again on the screen underneath.
+        if (k == KeyEvent.KEYCODE_BACK && backDown) { if (!down) backDown = false; return true }
+        editor?.let { ed ->
+            val nav = when (k) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> Nav.LEFT; KeyEvent.KEYCODE_DPAD_RIGHT -> Nav.RIGHT
+                KeyEvent.KEYCODE_DPAD_UP -> Nav.UP; KeyEvent.KEYCODE_DPAD_DOWN -> Nav.DOWN
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> Nav.OK
+                KeyEvent.KEYCODE_BACK -> Nav.BACK
+                else -> return super.dispatchKeyEvent(e)
+            }
+            if (nav == Nav.BACK) { if (down && e.repeatCount == 0) { backDown = true; ed.key(nav) } }
+            else if (down && (nav != Nav.OK || e.repeatCount == 0)) ed.key(nav)
+            return true
+        }
+        val p = pad ?: return super.dispatchKeyEvent(e)
+        if (!down) return super.dispatchKeyEvent(e)
+        if (gate && e.repeatCount == 0) { // a held key is one press of the code
+            val armed = konami.armed
+            if (konami.feed(k)) { enter(); return true }
+            if (k == KeyEvent.KEYCODE_BACK && armed) { backDown = true; return true } // the code's B, not "leave"
+        }
+        if (k == KeyEvent.KEYCODE_DEL) { p.delete(); return true }
+        val digit = when (k) {
+            in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> k - KeyEvent.KEYCODE_0
+            in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 -> k - KeyEvent.KEYCODE_NUMPAD_0
+            else -> return super.dispatchKeyEvent(e)
+        }
+        if (e.repeatCount == 0) p.type('0' + digit)
+        return true
     }
 
     override fun onResume() {
         super.onResume()
         // Returning from a system settings screen: refresh the statuses.
-        if (started) render(focusedId(), null) else started = true // first resume keeps the "section" focus
+        if (!started) started = true // first resume keeps the "section" focus
+        else if (pad == null && editor == null) render(focusedId(), null)
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (gate) return finish()
+        if (pad != null) return showList("simple-pin", "simple") // a new PIN abandoned
         val s = sub ?: return finish()
         sub = null
         render(s.opener, s.section)
@@ -177,19 +315,8 @@ class SetupActivity : Activity() {
     private fun remapText(r: Remap) = "${KeyNames.label(r.keyCode)} · ${pressLabel(r.press)} → ${actionLabel(r.action)}"
 
     private fun rows(): List<Row> = when (val s = sub) {
-        is Sub.FavActions -> listOf(
-            Row(label(s.pkg)),
-            Row("Move up", "up") { edit { it.moveFavorite(s.pkg, -1) } },
-            Row("Move down", "down") { edit { it.moveFavorite(s.pkg, 1) } },
-            Row("Remove", "remove") { edit { it.removeFavorite(s.pkg) }; sub = null },
-        )
-        Sub.PickFavorite -> listOf(Row("Add favorite")) +
-            (apps.filter { it.pkg !in config.hidden }.map { it.pkg } + inputs.map { "input:${it.id}" })
-                .filter { it !in config.favorites }.map { f ->
-                    Row(label(f), "pick:$f") { edit { it.addFavorite(f) }; sub = null }
-                }
         Sub.PickMain -> listOf(Row("Main app")) +
-            apps.map { a -> Row(a.label, "pick:${a.pkg}") { edit { it.setMainApp(a.pkg) }; sub = null } }
+            (apps.map { it.pkg } + inputs.map { "input:${it.id}" }).map { m -> Row(label(m), "pick:$m") { edit { it.setMainApp(m) }; sub = null } }
         is Sub.ImportConfirm -> listOf(Row("Import this setup?")) + s.check.summary.map { Row(it) } + listOf(
             Row("Apply", "apply") { edit { s.check.config }; backupNote = note ?: "Setup imported"; sub = null },
             Row("Cancel", "cancel") { sub = null },
@@ -242,13 +369,32 @@ class SetupActivity : Activity() {
 
     private fun mainRows(): List<Row> = buildList {
         note?.let { add(Row(it)) }
+        add(Row("Simple mode", "#simple"))
+        simpleNote?.let { add(Row(it)) }
+        if (config.pin == null) {
+            add(Row("Locks this setup behind a PIN. The home screen stops changing and stops asking questions."))
+            add(Row("Turn on…", "simple-pin") { askNewPin() })
+        } else {
+            add(Row("On. Setup asks for the PIN."))
+            add(Row("Change PIN", "simple-pin") { askNewPin() })
+            add(Row("Turn off", "simple-off") { edit { it.unlock() }; if (note == null) simpleNote = "Simple mode is off" })
+        }
+        add(Row("Forgot the PIN? On the PIN screen press Up Up Down Down Left Right Left Right Back OK."))
+
         add(Row("Appearance", "#appearance"))
         palette(config).let { p -> add(Row("Choose look… (${p.pattern}, ${p.accentName}, ${p.baseName})", "appearance") { sub = Sub.Appearance }) }
 
         add(Row("Favorites", "#favorites"))
-        config.favorites.forEach { p -> add(Row(label(p), "fav:$p") { sub = Sub.FavActions(p) }) }
-        add(if (config.favorites.size >= HomeModel.MAX_FAVORITES) Row("Add favorite... (5 of 5)")
-            else Row("Add favorite...", "add-fav") { sub = Sub.PickFavorite })
+        add(Row(config.favorites.joinToString(", ", transform = ::label).ifEmpty { "None yet" }))
+        add(Row("Edit favorites…", "edit-favs") { showEditor() })
+
+        if (tvInputs.isNotEmpty()) {
+            add(Row("Input names", "#inputs"))
+            tvInputs.forEach { i ->
+                val name = config.inputNames[i.id]
+                add(Row(if (name == null) i.label else "${i.label}: $name", "name:${i.id}") { rename(i) { render("name:${i.id}", null) } })
+            }
+        }
 
         add(Row("Auto-open", "#autoopen"))
         add(if (config.mainApp == null) Row("Open main app on start: set a main app first")
@@ -340,7 +486,9 @@ class SetupActivity : Activity() {
         val id = focusedId()
         buttonsNote = null
         backupNote = null
+        simpleNote = null
         r.onClick?.invoke()
+        if (pad != null || editor != null) return // the row opened another screen
         val now = sub
         when {
             now === before -> render(id, null)

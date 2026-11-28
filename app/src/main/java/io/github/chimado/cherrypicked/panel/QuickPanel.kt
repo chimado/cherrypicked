@@ -17,6 +17,7 @@ import android.widget.TextView
 import io.github.chimado.cherrypicked.Theme
 import io.github.chimado.cherrypicked.store.ConfigStore
 import io.github.chimado.cherrypicked.a11y.Fonts
+import io.github.chimado.cherrypicked.home.named
 import io.github.chimado.cherrypicked.inputs.InputCatalog
 import io.github.chimado.cherrypicked.keys.Action
 import io.github.chimado.cherrypicked.setup.SetupActivity
@@ -77,7 +78,7 @@ class QuickPanel(
         w = svc.resources.displayMetrics.widthPixels
         rows = buildList {
             add(Row("sleep", { sleepLabel(sleepEnd(), System.currentTimeMillis()) }) { run(Action.SleepTimer); refresh(sel) })
-            for (i in InputCatalog(svc).inputs()) add(Row("input:${i.id}", { i.label }) { close(); run(Action.OpenInput(i.id)) })
+            for (i in InputCatalog(svc).inputs().named(store.load())) add(Row("input:${i.id}", { i.label }) { close(); run(Action.OpenInput(i.id)) })
             add(Row("screen_off", { "Screen off" }) { close(); run(Action.ScreenOff) })
             add(Row("setup", { "Setup" }) {
                 svc.startActivity(Intent(svc, SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

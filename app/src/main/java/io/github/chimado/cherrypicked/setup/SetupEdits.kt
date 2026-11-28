@@ -8,6 +8,8 @@ import io.github.chimado.cherrypicked.keys.Press
 import io.github.chimado.cherrypicked.keys.Remap
 import io.github.chimado.cherrypicked.store.Config
 import io.github.chimado.cherrypicked.store.DEFAULT_REMAPS
+import io.github.chimado.cherrypicked.store.MAX_INPUT_NAME
+import io.github.chimado.cherrypicked.store.isPin
 
 /** Pure config edits for Setup; each returns the same config when the edit is refused. */
 fun Config.moveFavorite(pkg: String, delta: Int): Config {
@@ -25,6 +27,16 @@ fun Config.addFavorite(pkg: String): Config =
 fun Config.toggleHidden(pkg: String) = copy(hidden = if (pkg in hidden) hidden - pkg else hidden + pkg)
 
 fun Config.setMainApp(pkg: String) = copy(mainApp = pkg, autoOpen = true)
+
+/** Blank removes the nickname. */
+fun Config.nameInput(id: String, name: String): Config = name.trim().take(MAX_INPUT_NAME).let {
+    copy(inputNames = if (it.isEmpty()) inputNames - id else inputNames + (id to it))
+}
+
+/** Turns simple mode on, or changes its PIN; [row] is the lower row to keep showing. */
+fun Config.lock(pin: String, row: List<String>) = if (isPin(pin)) copy(pin = pin, frozenRow = row) else this
+
+fun Config.unlock() = copy(pin = null, frozenRow = emptyList())
 
 fun Config.toggleAutoOpen() = if (mainApp == null) this else copy(autoOpen = !autoOpen)
 

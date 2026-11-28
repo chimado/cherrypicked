@@ -14,6 +14,9 @@ const val NEWER_VERSION = "newer config version" // the one ConfigFormatExceptio
 
 val DEFAULT_REMAPS = listOf(Remap(3, Press.LONG, Action.QuickPanel))
 
+const val MAX_INPUT_NAME = 20
+fun isPin(s: String) = s.length == 4 && s.all { it in '0'..'9' }
+
 /** Entries are package names; [declined] holds "fav:<pkg>" and "main:<pkg>" keys. */
 data class Config(
     val version: Int = 1,
@@ -27,6 +30,9 @@ data class Config(
     val pattern: String = "Plain", // preset names; unknown ones resolve to the default in palette()
     val accent: String = "Cherry",
     val base: String = "Graphite",
+    val inputNames: Map<String, String> = emptyMap(), // input id to nickname
+    val pin: String? = null, // four digits; set means simple mode is on
+    val frozenRow: List<String> = emptyList(), // every app in the order it ranked when simple mode was turned on
 ) {
     companion object
 }
@@ -42,6 +48,9 @@ fun Config.toJson(): String = JSONObject().apply {
     put("pattern", pattern)
     put("accent", accent)
     put("base", base)
+    put("inputNames", JSONObject(inputNames))
+    pin?.let { put("pin", it) }
+    put("frozenRow", JSONArray(frozenRow))
     put("remaps", JSONArray().apply {
         remaps.forEach { put(JSONObject().put("key", it.keyCode).put("press", it.press.name).put("action", it.action.encode())) }
     })
@@ -77,6 +86,13 @@ fun Config.Companion.fromJson(s: String): Config = try {
         pattern = str("pattern", d.pattern),
         accent = str("accent", d.accent),
         base = str("base", d.base),
+        inputNames = if (!o.has("inputNames")) d.inputNames else o.getJSONObject("inputNames").let { n ->
+            n.keys().asSequence().associateWith { k -> (n.get(k) as? String ?: throw JSONException("inputNames.$k not a string")).trim().take(MAX_INPUT_NAME) }
+                .filterValues { it.isNotEmpty() }
+        },
+        // A pin nobody can type on the pad would lock the owner out (short of the bypass), so it is refused.
+        pin = if (!o.has("pin")) null else (o.get("pin") as? String)?.takeIf(::isPin) ?: throw JSONException("pin not four digits"),
+        frozenRow = strings("frozenRow") ?: d.frozenRow,
     )
 } catch (e: JSONException) {
     throw ConfigFormatException(e.message ?: "bad config")

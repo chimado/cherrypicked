@@ -14,8 +14,13 @@ android {
         applicationId = "io.github.chimado.cherrypicked"
         minSdk = 31
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // The commit count: a build from a later commit always installs over an earlier one. 1 outside a git checkout.
+        val commits = runCatching {
+            ProcessBuilder("git", "rev-list", "--count", "HEAD").directory(rootDir).start().inputStream.bufferedReader().readText().trim().toInt()
+        }.getOrDefault(1)
+        versionCode = commits
+        // -Pnightly marks a test build; its name matches the pre-release tag scripts/nightly-release.sh publishes.
+        versionName = providers.gradleProperty("cherrypicked.version").get() + if (providers.gradleProperty("nightly").isPresent) "-nightly.$commits" else ""
     }
     signingConfigs {
         if (keystoreProps.isFile) create("release") {

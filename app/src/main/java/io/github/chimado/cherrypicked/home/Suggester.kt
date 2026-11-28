@@ -13,6 +13,7 @@ object Suggester {
 
     /** [excluded]: packages never worth proposing (other launchers, the TV-input app). */
     fun next(apps: List<AppEntry>, config: Config, scores: Map<String, Double>, excluded: Set<String> = emptySet()): Suggestion? {
+        if (config.pin != null) return null // simple mode never asks anything
         fun best(ok: (AppEntry) -> Boolean) = apps
             .filter { it.pkg !in config.hidden && it.pkg !in excluded && (scores[it.pkg] ?: 0.0) >= MIN_SCORE && ok(it) }
             .maxByOrNull { scores[it.pkg] ?: 0.0 }
